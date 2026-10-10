@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="NanoCut: molecular-dynamics workstation for nanometric cutting simulations (LAMMPS).">
+  <title>NanoCut · MD workstation</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%2313161a'/%3E%3Cpath d='M6 22h20' stroke='%236f9fd6' stroke-width='2'/%3E%3Cpath d='M19 6l7 0 0 11-4 4-3-3z' fill='%23e2a23a'/%3E%3Ccircle cx='10' cy='18' r='2' fill='%236f9fd6'/%3E%3Ccircle cx='15' cy='18' r='2' fill='%236f9fd6'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/views.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="app">
+    <aside class="sidebar" aria-label="Primary">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="4" fill="#1b1f24"/><path d="M5 23h22" stroke="#6f9fd6" stroke-width="2"/><path d="M18 5h8v12l-4 4-4-4z" fill="#e2a23a"/><circle cx="9" cy="19" r="2" fill="#6f9fd6"/><circle cx="14" cy="19" r="2" fill="#6f9fd6"/><circle cx="11.5" cy="15" r="2" fill="#5b6878"/></svg>
+        <div><span class="brand-name">NanoCut</span><span class="brand-sub">MD cutting workstation</span></div>
+      </div>
+      <nav class="nav" id="nav" aria-label="Views"></nav>
+      <div class="sidebar-foot">
+        <div class="current-sim" id="current-sim" aria-live="polite"></div>
+        <div class="version" id="version"></div>
+      </div>
+    </aside>
+
+    <header class="topbar">
+      <div class="crumb" id="crumb"></div>
+      <div class="spacer"></div>
+      <label class="sr-only" for="sim-select">Simulation</label>
+      <select class="select sim-select" id="sim-select" aria-label="Simulation"></select>
+      <span class="pill" id="conn" role="status"><span class="dot"></span><span class="t">Connecting…</span></span>
+      <button class="btn icon" id="btn-refresh" type="button" aria-label="Rescan project folders" data-tip="Rescan project and reference folders"></button>
+      <a class="btn hide-sm" id="btn-docs" target="_blank" rel="noopener" data-tip="Interactive API documentation (FastAPI)">API docs</a>
+      <button class="btn icon" id="btn-help" type="button" aria-label="Keyboard shortcuts" data-tip="Keyboard shortcuts (?)"></button>
+    </header>
+
+    <main class="main" id="main" tabindex="-1">
+      <div class="offline-strip" role="status">Offline demo: the Python backend is unreachable. Showing a labelled snapshot of real API responses; actions that need computation are disabled.</div>
+      <div id="view"></div>
+    </main>
+  </div>
+
+  <aside class="drawer" id="drawer" role="dialog" aria-modal="false" aria-hidden="true" aria-labelledby="drawer-path">
+    <div class="drawer-head">
+      <div style="flex:1;min-width:0">
+        <div class="path" id="drawer-path"></div>
+        <div class="legend-row" id="drawer-meta"></div>
+      </div>
+      <button class="btn" id="drawer-close" type="button">Close <span class="kbd">Esc</span></button>
+    </div>
+    <div class="drawer-body" id="drawer-body"></div>
+  </aside>
+  <div class="drawer-backdrop" id="drawer-backdrop"></div>
+
+  <div class="modal-backdrop" id="help-modal" role="dialog" aria-modal="true" aria-labelledby="help-title">
+    <div class="modal">
+      <div class="panel-head"><h3 id="help-title">Keyboard shortcuts</h3><div class="actions"><button class="btn" id="help-close" type="button">Close <span class="kbd">Esc</span></button></div></div>
+      <div class="panel-body">
+        <table class="data">
+          <tbody>
+            <tr><td><span class="kbd">Alt</span> + <span class="kbd">1</span>…<span class="kbd">8</span></td><td>Switch view (Workspace … Validation, Studio)</td></tr>
+            <tr><td><span class="kbd">?</span></td><td>This help</td></tr>
+            <tr><td><span class="kbd">/</span></td><td>Focus the search field of the current view</td></tr>
+            <tr><td><span class="kbd">Esc</span></td><td>Close the source viewer or this dialog</td></tr>
+            <tr><td colspan="2" class="muted">Visualizer (viewport or page focused)</td></tr>
+            <tr><td><span class="kbd">Space</span></td><td>Play / pause</td></tr>
+            <tr><td><span class="kbd">,</span> <span class="kbd">.</span></td><td>Previous / next frame</td></tr>
+            <tr><td>Drag · <span class="kbd">Shift</span>+drag · wheel</td><td>Rotate · pan · zoom (double-click to fit)</td></tr>
+            <tr><td><span class="kbd">←</span><span class="kbd">→</span><span class="kbd">↑</span><span class="kbd">↓</span> · <span class="kbd">+</span><span class="kbd">-</span> · <span class="kbd">0</span></td><td>Rotate · zoom · fit (viewport focused)</td></tr>
+            <tr><td colspan="2" class="muted">Studio</td></tr>
+            <tr><td>Drag · right-drag or <span class="kbd">Shift</span>+drag · wheel</td><td>Rotate · pan · zoom; double-click: zoom all; click: inspect atom</td></tr>
+            <tr><td><span class="kbd">Space</span> · <span class="kbd">,</span> <span class="kbd">.</span></td><td>Play / pause · previous / next frame</td></tr>
+            <tr><td><span class="kbd">Esc</span></td><td>Cancel a measurement</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+</body>
+</html>

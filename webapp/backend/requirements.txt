@@ -1,0 +1,4 @@
+# NanoCut web backend (in addition to the project's requirements.txt: numpy, pandas, plotly, streamlit)
+fastapi>=0.115
+uvicorn>=0.30
+httpx>=0.27        # only for the self-check (FastAPI TestClient)

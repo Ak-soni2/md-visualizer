@@ -135,3 +135,7 @@ No faked predictions (the mock is labelled as such). Morse sets for Al/Fe/Au/Ag/
 lattices (Ti, 4H-SiC) not implemented. Multi-pass cutting and DoE sweep generation pending. Sub-agent verification panel
 (independent re-check of every file by 20+ agents) could not run on 2026-10-10 because the account's weekly agent quota was
 exhausted; the same checks were done by scripts instead.
+
+### 4b. Making the heat source visible in OVITO
+Regions are not atoms, so B writes `v_inlaser` (= `rmask(laser)`, 1 inside the moving zone) as a dump column; colour or
+select by it in OVITO, and colour by `f_keav` to see the heat. The zone's own temperature is in `Tlaser_K` of the force file.

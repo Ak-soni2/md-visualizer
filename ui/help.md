@@ -29,3 +29,11 @@ only, so the heating of the cutting zone is a result, not an input. Layer ids ar
 - Temperatures exclude the streaming velocity of the tool (`temp/com`) and, for the workpiece, the x-component
   (`temp/partial 0 1 1`, as in the reference decks) — switchable.
 - Everything written to the decks is cross-referenced to the LAMMPS manual (release 30 Sep 2026) in `reference/`.
+
+**Seeing the laser heat source in OVITO.** A LAMMPS `region` is geometry, not atoms, so OVITO cannot draw it directly.
+Deck B therefore writes a per-atom column `v_inlaser` (1 = atom currently inside the moving heated zone, 0 = outside) to
+every dump. In OVITO: *Add modifier → Color coding → property `v_inlaser`* (or *Expression selection → `v_inlaser == 1`*)
+shows the zone moving with the tool; *Color coding → `f_keav`* (time-averaged kinetic energy = local temperature) shows the
+heat itself. The zone temperature is also in the force file (`Tlaser_K`). In `preheat` mode there is no zone — the whole
+workpiece is hot, which you see in `f_keav` and in the thermostat lines of deck A (`velocity gpWPeq create <T>` and
+`fix eqWP ... nvt temp <T> <T>`).

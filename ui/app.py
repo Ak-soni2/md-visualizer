@@ -633,6 +633,8 @@ with tabs[6]:
                 props.append("potential energy (eV)")
             if fr.col("vx") is not None:
                 props.append("speed |v| (Å/ps)")
+            if fr.col("v_inlaser") is not None:
+                props.append("laser zone (1 = inside the moving heated zone)")
             prop = st.selectbox("Colour atoms by", props)
             wp_only = st.checkbox("Workpiece only", value=False)
             atom_vol = st.number_input("Atomic volume for stress (Å³)", value=float(np.prod([ms_ for ms_ in [1.0]]) * (prm["experiment"]["workpiece"]["a0"] ** 3 / 8 if prm else 10.4)),
@@ -654,6 +656,8 @@ with tabs[6]:
                 val, cmap, cat = fr.hydrostatic(atom_vol), "RdBu", False
             elif prop.startswith("potential"):
                 val, cmap, cat = fr.col("c_pe"), "Viridis", False
+            elif prop.startswith("laser zone"):
+                val, cmap, cat = fr.col("v_inlaser").astype(int), None, True
             else:
                 val, cmap, cat = np.sqrt(fr.col("vx") ** 2 + fr.col("vy") ** 2 + fr.col("vz") ** 2), "Plasma", False
             sel = np.ones(len(xyz), bool)

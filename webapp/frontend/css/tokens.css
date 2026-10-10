@@ -1,0 +1,73 @@
+/* NanoCut design tokens. One place for colour, type and spacing decisions. */
+:root {
+  /* surfaces: graphite, layered by small luminance steps */
+  --bg-0: #0d0f12;          /* app background */
+  --bg-1: #13161a;          /* panels */
+  --bg-2: #191d22;          /* raised: headers, hovered rows */
+  --bg-3: #20252b;          /* controls */
+  --bg-inset: #0a0c0e;      /* viewport, code */
+  --line: #232930;          /* hairlines */
+  --line-2: #2e353e;        /* control borders */
+  --line-3: #3b444f;        /* focus-adjacent borders */
+
+  /* text */
+  --text-0: #e9e6df;        /* primary */
+  --text-1: #b7b3aa;        /* secondary */
+  --text-2: #858178;        /* tertiary / labels */
+  --text-3: #5d5a54;        /* disabled */
+
+  /* accents: amber for interaction and attention, steel blue for data */
+  --accent: #e2a23a;
+  --accent-strong: #f0b453;
+  --accent-soft: rgba(226, 162, 58, 0.12);
+  --accent-line: rgba(226, 162, 58, 0.45);
+  --data: #6f9fd6;
+  --data-soft: rgba(111, 159, 214, 0.13);
+
+  /* status */
+  --ok: #93b26a;
+  --ok-soft: rgba(147, 178, 106, 0.13);
+  --warn: #e2a23a;
+  --warn-soft: rgba(226, 162, 58, 0.13);
+  --err: #df6b5d;
+  --err-soft: rgba(223, 107, 93, 0.14);
+  --info: #6f9fd6;
+  --info-soft: rgba(111, 159, 214, 0.13);
+
+  /* provenance */
+  --prov-file: #6f9fd6;
+  --prov-computed: #a5aebb;
+  --prov-editable: #e2a23a;
+  --prov-missing: #df6b5d;
+
+  /* type */
+  --font-sans: "IBM Plex Sans", "Segoe UI", "Inter", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", "JetBrains Mono", "Cascadia Mono", Consolas, "SFMono-Regular", monospace;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 18px;
+  --fs-2xl: 22px;
+  --lh: 1.45;
+
+  /* spacing (4 px grid) */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+
+  --radius: 3px;
+  --radius-lg: 5px;
+  --sidebar-w: 212px;
+  --topbar-h: 48px;
+  --shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--line-2);
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --t-fast: 120ms;
+  --t-med: 200ms;
+
+  color-scheme: dark;
+}

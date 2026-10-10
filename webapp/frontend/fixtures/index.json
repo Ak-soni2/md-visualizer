@@ -1,0 +1,20 @@
+{
+ "meta": {
+  "generated": "2026-10-11 03:17",
+  "simulation": "example-sample-run",
+  "note": "Snapshot of real API responses for the offline demo. Read-only; only the sample run is included."
+ },
+ "routes": {
+  "/api/simulations": "simulations.json",
+  "/api/tree?depth=2": "tree.json",
+  "/api/simulations/example-sample-run": "overview.json",
+  "/api/simulations/example-sample-run/parameters": "parameters.json",
+  "/api/simulations/example-sample-run/trajectory": "trajectory.json",
+  "/api/simulations/example-sample-run/frames/0?props=mol,temperature": "frame_0.json",
+  "/api/simulations/example-sample-run/frames/1?props=mol,temperature": "frame_1.json",
+  "/api/simulations/example-sample-run/frames/2?props=mol,temperature": "frame_2.json",
+  "/api/simulations/example-sample-run/series": "series.json",
+  "/api/simulations/example-sample-run/plots": "plots.json",
+  "/api/validation": "validation.json"
+ }
+}
