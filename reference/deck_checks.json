@@ -1,0 +1,2801 @@
+{
+ "cases": [
+  {
+   "case": "10-10",
+   "reference_parsed": {
+    "a": 4.3667,
+    "b": 3.571,
+    "dx_lat": 220.0,
+    "dy_lat": 97.0,
+    "lr_lat": 10.0,
+    "lx_lat": 70.0,
+    "wp_nx": 220,
+    "wp_ny": 100,
+    "wp_nz": 9,
+    "x_end_A": 960.674,
+    "y_surface_A": 436.66999999999996,
+    "tool_front_x_A": 960.6739999999999,
+    "tool_bottom_y_A": 423.56989999999996,
+    "depth_A": 13.1001,
+    "gap_A": 0.0,
+    "edge_radius_A": 35.71,
+    "tool_block_A": 249.97,
+    "wp_fixed_A": 21.8335,
+    "wp_thermo_A": 21.8335,
+    "tool_fixed_A": 10.713000000000001,
+    "tool_thermo_A": 10.713000000000001,
+    "clearance_deg": 10.0,
+    "equil_steps": 10000,
+    "equil_dt_ps": 0.0005,
+    "T": 300.0,
+    "tdamp": 0.05,
+    "potential_A": "SiC_Erhart-Albe.tersoff",
+    "boundary_A": "s s p",
+    "v_Aps": 2.0,
+    "cut_steps": 300000,
+    "cut_dt_ps": 0.0005,
+    "cut_length_A": 300.0,
+    "potential_B": "SiC_1994.tersoff",
+    "boundary_B": "s p s",
+    "dump_every_B": 500,
+    "restart_every_B": 10000,
+    "minimize_B": true,
+    "mobile_definition_B": "subtract all gpCTtsbd gpWPtsbd"
+   },
+   "generated_counts": {
+    "total": 1991973,
+    "workpiece": 1589769,
+    "tool": 402204,
+    "ct_mob": 336688,
+    "ct_ts": 32032,
+    "ct_bd": 33484,
+    "wp_mob": 1360800,
+    "wp_ts": 109800,
+    "wp_bd": 119169
+   },
+   "rows": [
+    {
+     "parameter": "workpiece x_end (A)",
+     "reference": 960.674,
+     "generated": 960.674,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "workpiece surface y (A)",
+     "reference": 436.66999999999996,
+     "generated": 436.66999999999996,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "workpiece width Lz (A)",
+     "reference": 39.3003,
+     "generated": 39.3003,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "depth of cut (A)",
+     "reference": 13.1001,
+     "generated": 13.1001,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "gap (A)",
+     "reference": 0.0,
+     "generated": 0.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool front x at t=0 (A)",
+     "reference": 960.6739999999999,
+     "generated": 960.6739999999992,
+     "status": "SAME",
+     "note": "reference: block x-lo = dx; generated: foremost point of the rounded edge"
+    },
+    {
+     "parameter": "tool lowest point y (A)",
+     "reference": 423.56989999999996,
+     "generated": 423.56989999999996,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge radius (A)",
+     "reference": 35.71,
+     "generated": 35.71,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool block size (A)",
+     "reference": 249.97,
+     "generated": 249.97,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge centre x (A)",
+     "reference": 996.3839999999999,
+     "generated": 996.3840000000001,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge centre y (A)",
+     "reference": 459.27989999999994,
+     "generated": 459.27989999999994,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "wp fixed layer (A)",
+     "reference": 21.8335,
+     "generated": 21.8335,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "wp thermostat layer (A)",
+     "reference": 21.8335,
+     "generated": 21.8335,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool fixed layer (A)",
+     "reference": 10.713000000000001,
+     "generated": 10.713,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool thermostat layer (A)",
+     "reference": 10.713000000000001,
+     "generated": 10.713,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "clearance angle (deg)",
+     "reference": 10.0,
+     "generated": 10.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "equilibration steps",
+     "reference": 10000,
+     "generated": 10000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "equilibration dt (ps)",
+     "reference": 0.0005,
+     "generated": 0.0005,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "temperature (K)",
+     "reference": 300.0,
+     "generated": 300.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "Tdamp (ps)",
+     "reference": 0.05,
+     "generated": 0.05,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting speed (A/ps)",
+     "reference": 2.0,
+     "generated": 2.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting steps",
+     "reference": 300000,
+     "generated": 300000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting dt (ps)",
+     "reference": 0.0005,
+     "generated": 0.0005,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting length (A)",
+     "reference": 300.0,
+     "generated": 300.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "potential in B",
+     "reference": "SiC_1994.tersoff",
+     "generated": "SiC_1994.tersoff",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "potential in A",
+     "reference": "SiC_Erhart-Albe.tersoff",
+     "generated": "SiC_1994.tersoff",
+     "status": "DIFFERENT",
+     "note": "INTENDED: NanoCut uses one potential for A and B (reference equilibrates with Erhart-Albe, cuts with Tersoff-1994)"
+    },
+    {
+     "parameter": "boundary in A",
+     "reference": "s s p",
+     "generated": "s s p",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "boundary in B",
+     "reference": "s p s",
+     "generated": "s s p",
+     "status": "DIFFERENT",
+     "note": "INTENDED: reference B says 's p s' but read_restart overrides it with A's 's s p' (warning in log)"
+    },
+    {
+     "parameter": "dump every in B",
+     "reference": 500,
+     "generated": 500,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "restart every in B",
+     "reference": 10000,
+     "generated": 10000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "minimize in B",
+     "reference": true,
+     "generated": true,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "B reads the restart written by A",
+     "reference": "cut_sic_eq.restart.10000",
+     "generated": "cut_SiC_R10_d10_A.restart -> cut_SiC_R10_d10_A.restart",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "fix 13 property/atom mol re-declared in B",
+     "reference": true,
+     "generated": true,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "pair_coeff mapping",
+     "reference": "C Si C",
+     "generated": "C Si C",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "fix move on tool boundary (B)",
+     "reference": "fix 4 gpCTbd move linear -$v 0 0 units box",
+     "generated": "fix             cut gpCTbd move linear -2.000000 0.0 0.0 units box",
+     "status": "SAME",
+     "note": ""
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "case": "10-20",
+   "reference_parsed": {
+    "v_Aps": 2.0,
+    "cut_steps": 300000,
+    "cut_dt_ps": 0.0005,
+    "cut_length_A": 300.0,
+    "potential_B": "SiC_1994.tersoff",
+    "boundary_B": "s p s",
+    "dump_every_B": 500,
+    "restart_every_B": 10000,
+    "minimize_B": true,
+    "mobile_definition_B": "subtract all gpCTtsbd gpWPtsbd"
+   },
+   "generated_counts": {
+    "total": 1991621,
+    "workpiece": 1589769,
+    "tool": 401852,
+    "ct_mob": 336369,
+    "ct_ts": 32021,
+    "ct_bd": 33462,
+    "wp_mob": 1360800,
+    "wp_ts": 109800,
+    "wp_bd": 119169
+   },
+   "rows": [
+    {
+     "parameter": "workpiece x_end (A)",
+     "reference": null,
+     "generated": 960.674,
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "workpiece surface y (A)",
+     "reference": null,
+     "generated": 436.66999999999996,
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "workpiece width Lz (A)",
+     "reference": null,
+     "generated": 39.3003,
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "depth of cut (A)",
+     "reference": null,
+     "generated": 21.8335,
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "gap (A)",
+     "reference": null,
+     "generated": 0.0,
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "tool front x at t=0 (A)",
+     "reference": null,
+     "generated": 960.6739999999992,
+     "status": "REF_MISSING",
+     "note": "reference: block x-lo = dx; generated: foremost point of the rounded edge"
+    },
+    {
+     "parameter": "tool lowest point y (A)",
+     "reference": null,
+     "generated": 414.83649999999994,
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "edge radius (A)",
+     "reference": null,
+     "generated": 35.71,
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "tool block size (A)",
+     "reference": null,
+     "generated": 249.97,
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "edge centre x (A)",
+     "reference": null,
+     "generated": 996.3840000000001,
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "edge centre y (A)",
+     "reference": null,
+     "generated": 450.5464999999999,
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "wp fixed layer (A)",
+     "reference": null,
+     "generated": 21.8335,
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "wp thermostat layer (A)",
+     "reference": null,
+     "generated": 21.8335,
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "tool fixed layer (A)",
+     "reference": null,
+     "generated": 10.713,
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "tool thermostat layer (A)",
+     "reference": null,
+     "generated": 10.713,
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "clearance angle (deg)",
+     "reference": null,
+     "generated": 10.0,
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "equilibration steps",
+     "reference": null,
+     "generated": 10000,
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "equilibration dt (ps)",
+     "reference": null,
+     "generated": 0.0005,
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "temperature (K)",
+     "reference": null,
+     "generated": 300.0,
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "Tdamp (ps)",
+     "reference": null,
+     "generated": 0.05,
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "cutting speed (A/ps)",
+     "reference": 2.0,
+     "generated": 2.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting steps",
+     "reference": 300000,
+     "generated": 300000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting dt (ps)",
+     "reference": 0.0005,
+     "generated": 0.0005,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting length (A)",
+     "reference": 300.0,
+     "generated": 300.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "potential in B",
+     "reference": "SiC_1994.tersoff",
+     "generated": "SiC_1994.tersoff",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "potential in A",
+     "reference": null,
+     "generated": "SiC_1994.tersoff",
+     "status": "REF_MISSING",
+     "note": "INTENDED: NanoCut uses one potential for A and B (reference equilibrates with Erhart-Albe, cuts with Tersoff-1994)"
+    },
+    {
+     "parameter": "boundary in A",
+     "reference": null,
+     "generated": "s s p",
+     "status": "REF_MISSING",
+     "note": ""
+    },
+    {
+     "parameter": "boundary in B",
+     "reference": "s p s",
+     "generated": "s s p",
+     "status": "DIFFERENT",
+     "note": "INTENDED: reference B says 's p s' but read_restart overrides it with A's 's s p' (warning in log)"
+    },
+    {
+     "parameter": "dump every in B",
+     "reference": 500,
+     "generated": 500,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "restart every in B",
+     "reference": 10000,
+     "generated": 10000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "minimize in B",
+     "reference": true,
+     "generated": true,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "B reads the restart written by A",
+     "reference": "cut_sic_eq.restart.10000",
+     "generated": "cut_SiC_R10_d20_A.restart -> cut_SiC_R10_d20_A.restart",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "fix 13 property/atom mol re-declared in B",
+     "reference": true,
+     "generated": true,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "pair_coeff mapping",
+     "reference": "C Si C",
+     "generated": "C Si C",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "fix move on tool boundary (B)",
+     "reference": "fix 4 gpCTbd move linear -$v 0 0 units box",
+     "generated": "fix             cut gpCTbd move linear -2.000000 0.0 0.0 units box",
+     "status": "SAME",
+     "note": ""
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "case": "10-30",
+   "reference_parsed": {
+    "a": 4.3667,
+    "b": 3.571,
+    "dx_lat": 222.0,
+    "dy_lat": 93.0,
+    "lr_lat": 10.0,
+    "lx_lat": 70.0,
+    "wp_nx": 220,
+    "wp_ny": 100,
+    "wp_nz": 9,
+    "x_end_A": 960.674,
+    "y_surface_A": 436.66999999999996,
+    "tool_front_x_A": 969.4073999999999,
+    "tool_bottom_y_A": 406.1031,
+    "depth_A": 30.566899999999997,
+    "gap_A": 8.7334,
+    "edge_radius_A": 35.71,
+    "tool_block_A": 249.97,
+    "wp_fixed_A": 21.8335,
+    "wp_thermo_A": 21.8335,
+    "tool_fixed_A": 10.713000000000001,
+    "tool_thermo_A": 10.713000000000001,
+    "clearance_deg": 10.0,
+    "equil_steps": 10000,
+    "equil_dt_ps": 0.0005,
+    "T": 300.0,
+    "tdamp": 0.05,
+    "potential_A": "SiC_Erhart-Albe.tersoff",
+    "boundary_A": "s s p",
+    "v_Aps": 2.0,
+    "cut_steps": 200000,
+    "cut_dt_ps": 0.0005,
+    "cut_length_A": 200.0,
+    "potential_B": "SiC_1994.tersoff",
+    "boundary_B": "s p s",
+    "dump_every_B": 500,
+    "restart_every_B": 10000,
+    "minimize_B": true,
+    "mobile_definition_B": "subtract all gpCTtsbd gpWPtsbd"
+   },
+   "generated_counts": {
+    "total": 1991302,
+    "workpiece": 1589769,
+    "tool": 401533,
+    "ct_mob": 336050,
+    "ct_ts": 32021,
+    "ct_bd": 33462,
+    "wp_mob": 1360800,
+    "wp_ts": 109800,
+    "wp_bd": 119169
+   },
+   "rows": [
+    {
+     "parameter": "workpiece x_end (A)",
+     "reference": 960.674,
+     "generated": 960.674,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "workpiece surface y (A)",
+     "reference": 436.66999999999996,
+     "generated": 436.66999999999996,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "workpiece width Lz (A)",
+     "reference": 39.3003,
+     "generated": 39.3003,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "depth of cut (A)",
+     "reference": 30.566899999999997,
+     "generated": 30.566899999999997,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "gap (A)",
+     "reference": 8.7334,
+     "generated": 8.7334,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool front x at t=0 (A)",
+     "reference": 969.4073999999999,
+     "generated": 969.4073999999991,
+     "status": "SAME",
+     "note": "reference: block x-lo = dx; generated: foremost point of the rounded edge"
+    },
+    {
+     "parameter": "tool lowest point y (A)",
+     "reference": 406.1031,
+     "generated": 406.1031,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge radius (A)",
+     "reference": 35.71,
+     "generated": 35.71,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool block size (A)",
+     "reference": 249.97,
+     "generated": 249.97,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge centre x (A)",
+     "reference": 1005.1174,
+     "generated": 1005.1174000000001,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge centre y (A)",
+     "reference": 441.81309999999996,
+     "generated": 441.81309999999996,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "wp fixed layer (A)",
+     "reference": 21.8335,
+     "generated": 21.8335,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "wp thermostat layer (A)",
+     "reference": 21.8335,
+     "generated": 21.8335,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool fixed layer (A)",
+     "reference": 10.713000000000001,
+     "generated": 10.713,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool thermostat layer (A)",
+     "reference": 10.713000000000001,
+     "generated": 10.713,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "clearance angle (deg)",
+     "reference": 10.0,
+     "generated": 10.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "equilibration steps",
+     "reference": 10000,
+     "generated": 10000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "equilibration dt (ps)",
+     "reference": 0.0005,
+     "generated": 0.0005,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "temperature (K)",
+     "reference": 300.0,
+     "generated": 300.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "Tdamp (ps)",
+     "reference": 0.05,
+     "generated": 0.05,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting speed (A/ps)",
+     "reference": 2.0,
+     "generated": 2.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting steps",
+     "reference": 200000,
+     "generated": 200000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting dt (ps)",
+     "reference": 0.0005,
+     "generated": 0.0005,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting length (A)",
+     "reference": 200.0,
+     "generated": 200.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "potential in B",
+     "reference": "SiC_1994.tersoff",
+     "generated": "SiC_1994.tersoff",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "potential in A",
+     "reference": "SiC_Erhart-Albe.tersoff",
+     "generated": "SiC_1994.tersoff",
+     "status": "DIFFERENT",
+     "note": "INTENDED: NanoCut uses one potential for A and B (reference equilibrates with Erhart-Albe, cuts with Tersoff-1994)"
+    },
+    {
+     "parameter": "boundary in A",
+     "reference": "s s p",
+     "generated": "s s p",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "boundary in B",
+     "reference": "s p s",
+     "generated": "s s p",
+     "status": "DIFFERENT",
+     "note": "INTENDED: reference B says 's p s' but read_restart overrides it with A's 's s p' (warning in log)"
+    },
+    {
+     "parameter": "dump every in B",
+     "reference": 500,
+     "generated": 500,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "restart every in B",
+     "reference": 10000,
+     "generated": 10000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "minimize in B",
+     "reference": true,
+     "generated": true,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "B reads the restart written by A",
+     "reference": "cut_sic_eq.restart.10000",
+     "generated": "cut_SiC_R10_d30_A.restart -> cut_SiC_R10_d30_A.restart",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "fix 13 property/atom mol re-declared in B",
+     "reference": true,
+     "generated": true,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "pair_coeff mapping",
+     "reference": "C Si C",
+     "generated": "C Si C",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "fix move on tool boundary (B)",
+     "reference": "fix 4 gpCTbd move linear -$v 0 0 units box",
+     "generated": "fix             cut gpCTbd move linear -2.000000 0.0 0.0 units box",
+     "status": "SAME",
+     "note": ""
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "case": "5-10",
+   "reference_parsed": {
+    "a": 4.3667,
+    "b": 3.571,
+    "dx_lat": 222.0,
+    "dy_lat": 97.0,
+    "lr_lat": 5.0,
+    "lx_lat": 70.0,
+    "wp_nx": 220,
+    "wp_ny": 100,
+    "wp_nz": 9,
+    "x_end_A": 960.674,
+    "y_surface_A": 436.66999999999996,
+    "tool_front_x_A": 969.4073999999999,
+    "tool_bottom_y_A": 423.56989999999996,
+    "depth_A": 13.1001,
+    "gap_A": 8.7334,
+    "edge_radius_A": 17.855,
+    "tool_block_A": 249.97,
+    "wp_fixed_A": 21.8335,
+    "wp_thermo_A": 21.8335,
+    "tool_fixed_A": 10.713000000000001,
+    "tool_thermo_A": 10.713000000000001,
+    "clearance_deg": 10.0,
+    "equil_steps": 10000,
+    "equil_dt_ps": 0.0005,
+    "T": 300.0,
+    "tdamp": 0.05,
+    "potential_A": "SiC_Erhart-Albe.tersoff",
+    "boundary_A": "s s p",
+    "v_Aps": 2.0,
+    "cut_steps": 200000,
+    "cut_dt_ps": 0.0005,
+    "cut_length_A": 200.0,
+    "potential_B": "SiC_1994.tersoff",
+    "boundary_B": "s p s",
+    "dump_every_B": 500,
+    "restart_every_B": 10000,
+    "minimize_B": true,
+    "mobile_definition_B": "subtract all gpCTtsbd gpWPtsbd"
+   },
+   "generated_counts": {
+    "total": 1988211,
+    "workpiece": 1589769,
+    "tool": 398442,
+    "ct_mob": 333410,
+    "ct_ts": 31790,
+    "ct_bd": 33242,
+    "wp_mob": 1360800,
+    "wp_ts": 109800,
+    "wp_bd": 119169
+   },
+   "rows": [
+    {
+     "parameter": "workpiece x_end (A)",
+     "reference": 960.674,
+     "generated": 960.674,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "workpiece surface y (A)",
+     "reference": 436.66999999999996,
+     "generated": 436.66999999999996,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "workpiece width Lz (A)",
+     "reference": 39.3003,
+     "generated": 39.3003,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "depth of cut (A)",
+     "reference": 13.1001,
+     "generated": 13.1001,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "gap (A)",
+     "reference": 8.7334,
+     "generated": 8.7334,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool front x at t=0 (A)",
+     "reference": 969.4073999999999,
+     "generated": 969.4073999999988,
+     "status": "SAME",
+     "note": "reference: block x-lo = dx; generated: foremost point of the rounded edge"
+    },
+    {
+     "parameter": "tool lowest point y (A)",
+     "reference": 423.56989999999996,
+     "generated": 423.56989999999996,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge radius (A)",
+     "reference": 17.855,
+     "generated": 17.855,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool block size (A)",
+     "reference": 249.97,
+     "generated": 249.97,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge centre x (A)",
+     "reference": 987.2624,
+     "generated": 987.2623999999997,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge centre y (A)",
+     "reference": 441.4249,
+     "generated": 441.4249,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "wp fixed layer (A)",
+     "reference": 21.8335,
+     "generated": 21.8335,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "wp thermostat layer (A)",
+     "reference": 21.8335,
+     "generated": 21.8335,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool fixed layer (A)",
+     "reference": 10.713000000000001,
+     "generated": 10.713,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool thermostat layer (A)",
+     "reference": 10.713000000000001,
+     "generated": 10.713,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "clearance angle (deg)",
+     "reference": 10.0,
+     "generated": 10.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "equilibration steps",
+     "reference": 10000,
+     "generated": 10000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "equilibration dt (ps)",
+     "reference": 0.0005,
+     "generated": 0.0005,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "temperature (K)",
+     "reference": 300.0,
+     "generated": 300.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "Tdamp (ps)",
+     "reference": 0.05,
+     "generated": 0.05,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting speed (A/ps)",
+     "reference": 2.0,
+     "generated": 2.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting steps",
+     "reference": 200000,
+     "generated": 200000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting dt (ps)",
+     "reference": 0.0005,
+     "generated": 0.0005,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting length (A)",
+     "reference": 200.0,
+     "generated": 200.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "potential in B",
+     "reference": "SiC_1994.tersoff",
+     "generated": "SiC_1994.tersoff",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "potential in A",
+     "reference": "SiC_Erhart-Albe.tersoff",
+     "generated": "SiC_1994.tersoff",
+     "status": "DIFFERENT",
+     "note": "INTENDED: NanoCut uses one potential for A and B (reference equilibrates with Erhart-Albe, cuts with Tersoff-1994)"
+    },
+    {
+     "parameter": "boundary in A",
+     "reference": "s s p",
+     "generated": "s s p",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "boundary in B",
+     "reference": "s p s",
+     "generated": "s s p",
+     "status": "DIFFERENT",
+     "note": "INTENDED: reference B says 's p s' but read_restart overrides it with A's 's s p' (warning in log)"
+    },
+    {
+     "parameter": "dump every in B",
+     "reference": 500,
+     "generated": 500,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "restart every in B",
+     "reference": 10000,
+     "generated": 10000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "minimize in B",
+     "reference": true,
+     "generated": true,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "B reads the restart written by A",
+     "reference": "cut_sic_eq.restart.10000",
+     "generated": "cut_SiC_R5_d10_A.restart -> cut_SiC_R5_d10_A.restart",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "fix 13 property/atom mol re-declared in B",
+     "reference": true,
+     "generated": true,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "pair_coeff mapping",
+     "reference": "C Si C",
+     "generated": "C Si C",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "fix move on tool boundary (B)",
+     "reference": "fix 4 gpCTbd move linear -$v 0 0 units box",
+     "generated": "fix             cut gpCTbd move linear -2.000000 0.0 0.0 units box",
+     "status": "SAME",
+     "note": ""
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "case": "5-20",
+   "reference_parsed": {
+    "a": 4.3667,
+    "b": 3.571,
+    "dx_lat": 220.0,
+    "dy_lat": 95.0,
+    "lr_lat": 5.0,
+    "lx_lat": 70.0,
+    "wp_nx": 220,
+    "wp_ny": 100,
+    "wp_nz": 9,
+    "x_end_A": 960.674,
+    "y_surface_A": 436.66999999999996,
+    "tool_front_x_A": 960.6739999999999,
+    "tool_bottom_y_A": 414.8365,
+    "depth_A": 21.8335,
+    "gap_A": 0.0,
+    "edge_radius_A": 17.855,
+    "tool_block_A": 249.97,
+    "wp_fixed_A": 21.8335,
+    "wp_thermo_A": 21.8335,
+    "tool_fixed_A": 10.713000000000001,
+    "tool_thermo_A": 10.713000000000001,
+    "clearance_deg": 10.0,
+    "equil_steps": 10000,
+    "equil_dt_ps": 0.0005,
+    "T": 300.0,
+    "tdamp": 0.05,
+    "potential_A": "SiC_Erhart-Albe.tersoff",
+    "boundary_A": "s s p",
+    "v_Aps": 2.0,
+    "cut_steps": 300000,
+    "cut_dt_ps": 0.0005,
+    "cut_length_A": 300.0,
+    "potential_B": "SiC_1994.tersoff",
+    "boundary_B": "s p s",
+    "dump_every_B": 500,
+    "restart_every_B": 10000,
+    "minimize_B": true,
+    "mobile_definition_B": "subtract all gpCTtsbd gpWPtsbd"
+   },
+   "generated_counts": {
+    "total": 1987881,
+    "workpiece": 1589769,
+    "tool": 398112,
+    "ct_mob": 333124,
+    "ct_ts": 31768,
+    "ct_bd": 33220,
+    "wp_mob": 1360800,
+    "wp_ts": 109800,
+    "wp_bd": 119169
+   },
+   "rows": [
+    {
+     "parameter": "workpiece x_end (A)",
+     "reference": 960.674,
+     "generated": 960.674,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "workpiece surface y (A)",
+     "reference": 436.66999999999996,
+     "generated": 436.66999999999996,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "workpiece width Lz (A)",
+     "reference": 39.3003,
+     "generated": 39.3003,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "depth of cut (A)",
+     "reference": 21.8335,
+     "generated": 21.8335,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "gap (A)",
+     "reference": 0.0,
+     "generated": 0.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool front x at t=0 (A)",
+     "reference": 960.6739999999999,
+     "generated": 960.6739999999988,
+     "status": "SAME",
+     "note": "reference: block x-lo = dx; generated: foremost point of the rounded edge"
+    },
+    {
+     "parameter": "tool lowest point y (A)",
+     "reference": 414.8365,
+     "generated": 414.83649999999994,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge radius (A)",
+     "reference": 17.855,
+     "generated": 17.855,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool block size (A)",
+     "reference": 249.97,
+     "generated": 249.97,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge centre x (A)",
+     "reference": 978.5289999999999,
+     "generated": 978.5289999999998,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge centre y (A)",
+     "reference": 432.6915,
+     "generated": 432.69149999999996,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "wp fixed layer (A)",
+     "reference": 21.8335,
+     "generated": 21.8335,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "wp thermostat layer (A)",
+     "reference": 21.8335,
+     "generated": 21.8335,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool fixed layer (A)",
+     "reference": 10.713000000000001,
+     "generated": 10.713,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool thermostat layer (A)",
+     "reference": 10.713000000000001,
+     "generated": 10.713,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "clearance angle (deg)",
+     "reference": 10.0,
+     "generated": 10.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "equilibration steps",
+     "reference": 10000,
+     "generated": 10000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "equilibration dt (ps)",
+     "reference": 0.0005,
+     "generated": 0.0005,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "temperature (K)",
+     "reference": 300.0,
+     "generated": 300.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "Tdamp (ps)",
+     "reference": 0.05,
+     "generated": 0.05,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting speed (A/ps)",
+     "reference": 2.0,
+     "generated": 2.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting steps",
+     "reference": 300000,
+     "generated": 300000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting dt (ps)",
+     "reference": 0.0005,
+     "generated": 0.0005,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting length (A)",
+     "reference": 300.0,
+     "generated": 300.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "potential in B",
+     "reference": "SiC_1994.tersoff",
+     "generated": "SiC_1994.tersoff",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "potential in A",
+     "reference": "SiC_Erhart-Albe.tersoff",
+     "generated": "SiC_1994.tersoff",
+     "status": "DIFFERENT",
+     "note": "INTENDED: NanoCut uses one potential for A and B (reference equilibrates with Erhart-Albe, cuts with Tersoff-1994)"
+    },
+    {
+     "parameter": "boundary in A",
+     "reference": "s s p",
+     "generated": "s s p",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "boundary in B",
+     "reference": "s p s",
+     "generated": "s s p",
+     "status": "DIFFERENT",
+     "note": "INTENDED: reference B says 's p s' but read_restart overrides it with A's 's s p' (warning in log)"
+    },
+    {
+     "parameter": "dump every in B",
+     "reference": 500,
+     "generated": 500,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "restart every in B",
+     "reference": 10000,
+     "generated": 10000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "minimize in B",
+     "reference": true,
+     "generated": true,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "B reads the restart written by A",
+     "reference": "cut_sic_eq.restart.10000",
+     "generated": "cut_SiC_R5_d20_A.restart -> cut_SiC_R5_d20_A.restart",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "fix 13 property/atom mol re-declared in B",
+     "reference": true,
+     "generated": true,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "pair_coeff mapping",
+     "reference": "C Si C",
+     "generated": "C Si C",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "fix move on tool boundary (B)",
+     "reference": "fix 4 gpCTbd move linear -$v 0 0 units box",
+     "generated": "fix             cut gpCTbd move linear -2.000000 0.0 0.0 units box",
+     "status": "SAME",
+     "note": ""
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "case": "5-30",
+   "reference_parsed": {
+    "a": 4.3667,
+    "b": 3.571,
+    "dx_lat": 220.0,
+    "dy_lat": 93.0,
+    "lr_lat": 5.0,
+    "lx_lat": 70.0,
+    "wp_nx": 220,
+    "wp_ny": 100,
+    "wp_nz": 9,
+    "x_end_A": 960.674,
+    "y_surface_A": 436.66999999999996,
+    "tool_front_x_A": 960.6739999999999,
+    "tool_bottom_y_A": 406.1031,
+    "depth_A": 30.566899999999997,
+    "gap_A": 0.0,
+    "edge_radius_A": 17.855,
+    "tool_block_A": 249.97,
+    "wp_fixed_A": 21.8335,
+    "wp_thermo_A": 21.8335,
+    "tool_fixed_A": 10.713000000000001,
+    "tool_thermo_A": 10.713000000000001,
+    "clearance_deg": 10.0,
+    "equil_steps": 10000,
+    "equil_dt_ps": 0.0005,
+    "T": 300.0,
+    "tdamp": 0.05,
+    "potential_A": "SiC_Erhart-Albe.tersoff",
+    "boundary_A": "s s p",
+    "v_Aps": 2.0,
+    "cut_steps": 300000,
+    "cut_dt_ps": 0.0005,
+    "cut_length_A": 300.0,
+    "potential_B": "SiC_1994.tersoff",
+    "boundary_B": "s p s",
+    "dump_every_B": 500,
+    "restart_every_B": 10000,
+    "minimize_B": true,
+    "mobile_definition_B": "subtract all gpCTtsbd gpWPtsbd"
+   },
+   "generated_counts": {
+    "total": 1987518,
+    "workpiece": 1589769,
+    "tool": 397749,
+    "ct_mob": 332794,
+    "ct_ts": 31757,
+    "ct_bd": 33198,
+    "wp_mob": 1360800,
+    "wp_ts": 109800,
+    "wp_bd": 119169
+   },
+   "rows": [
+    {
+     "parameter": "workpiece x_end (A)",
+     "reference": 960.674,
+     "generated": 960.674,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "workpiece surface y (A)",
+     "reference": 436.66999999999996,
+     "generated": 436.66999999999996,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "workpiece width Lz (A)",
+     "reference": 39.3003,
+     "generated": 39.3003,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "depth of cut (A)",
+     "reference": 30.566899999999997,
+     "generated": 30.566899999999997,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "gap (A)",
+     "reference": 0.0,
+     "generated": 0.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool front x at t=0 (A)",
+     "reference": 960.6739999999999,
+     "generated": 960.6739999999988,
+     "status": "SAME",
+     "note": "reference: block x-lo = dx; generated: foremost point of the rounded edge"
+    },
+    {
+     "parameter": "tool lowest point y (A)",
+     "reference": 406.1031,
+     "generated": 406.1031,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge radius (A)",
+     "reference": 17.855,
+     "generated": 17.855,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool block size (A)",
+     "reference": 249.97,
+     "generated": 249.97,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge centre x (A)",
+     "reference": 978.5289999999999,
+     "generated": 978.5289999999998,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge centre y (A)",
+     "reference": 423.9581,
+     "generated": 423.9581,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "wp fixed layer (A)",
+     "reference": 21.8335,
+     "generated": 21.8335,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "wp thermostat layer (A)",
+     "reference": 21.8335,
+     "generated": 21.8335,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool fixed layer (A)",
+     "reference": 10.713000000000001,
+     "generated": 10.713,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool thermostat layer (A)",
+     "reference": 10.713000000000001,
+     "generated": 10.713,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "clearance angle (deg)",
+     "reference": 10.0,
+     "generated": 10.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "equilibration steps",
+     "reference": 10000,
+     "generated": 10000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "equilibration dt (ps)",
+     "reference": 0.0005,
+     "generated": 0.0005,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "temperature (K)",
+     "reference": 300.0,
+     "generated": 300.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "Tdamp (ps)",
+     "reference": 0.05,
+     "generated": 0.05,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting speed (A/ps)",
+     "reference": 2.0,
+     "generated": 2.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting steps",
+     "reference": 300000,
+     "generated": 300000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting dt (ps)",
+     "reference": 0.0005,
+     "generated": 0.0005,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting length (A)",
+     "reference": 300.0,
+     "generated": 300.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "potential in B",
+     "reference": "SiC_1994.tersoff",
+     "generated": "SiC_1994.tersoff",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "potential in A",
+     "reference": "SiC_Erhart-Albe.tersoff",
+     "generated": "SiC_1994.tersoff",
+     "status": "DIFFERENT",
+     "note": "INTENDED: NanoCut uses one potential for A and B (reference equilibrates with Erhart-Albe, cuts with Tersoff-1994)"
+    },
+    {
+     "parameter": "boundary in A",
+     "reference": "s s p",
+     "generated": "s s p",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "boundary in B",
+     "reference": "s p s",
+     "generated": "s s p",
+     "status": "DIFFERENT",
+     "note": "INTENDED: reference B says 's p s' but read_restart overrides it with A's 's s p' (warning in log)"
+    },
+    {
+     "parameter": "dump every in B",
+     "reference": 500,
+     "generated": 500,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "restart every in B",
+     "reference": 10000,
+     "generated": 10000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "minimize in B",
+     "reference": true,
+     "generated": true,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "B reads the restart written by A",
+     "reference": "cut_sic_eq.restart.10000",
+     "generated": "cut_SiC_R5_d30_A.restart -> cut_SiC_R5_d30_A.restart",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "fix 13 property/atom mol re-declared in B",
+     "reference": true,
+     "generated": true,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "pair_coeff mapping",
+     "reference": "C Si C",
+     "generated": "C Si C",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "fix move on tool boundary (B)",
+     "reference": "fix 4 gpCTbd move linear -$v 0 0 units box",
+     "generated": "fix             cut gpCTbd move linear -2.000000 0.0 0.0 units box",
+     "status": "SAME",
+     "note": ""
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "case": "20-10",
+   "reference_parsed": {
+    "a": 4.3667,
+    "b": 3.571,
+    "dx_lat": 222.0,
+    "dy_lat": 97.0,
+    "lr_lat": 20.0,
+    "lx_lat": 70.0,
+    "wp_nx": 220,
+    "wp_ny": 100,
+    "wp_nz": 9,
+    "x_end_A": 960.674,
+    "y_surface_A": 436.66999999999996,
+    "tool_front_x_A": 969.4073999999999,
+    "tool_bottom_y_A": 423.56989999999996,
+    "depth_A": 13.1001,
+    "gap_A": 8.7334,
+    "edge_radius_A": 71.42,
+    "tool_block_A": 249.97,
+    "wp_fixed_A": 21.8335,
+    "wp_thermo_A": 21.8335,
+    "tool_fixed_A": 10.713000000000001,
+    "tool_thermo_A": 10.713000000000001,
+    "clearance_deg": 10.0,
+    "equil_steps": 10000,
+    "equil_dt_ps": 0.0005,
+    "T": 300.0,
+    "tdamp": 0.05,
+    "potential_A": "SiC_Erhart-Albe.tersoff",
+    "boundary_A": "s s p",
+    "v_Aps": 2.0,
+    "cut_steps": 200000,
+    "cut_dt_ps": 0.0005,
+    "cut_length_A": 200.0,
+    "potential_B": "SiC_1994.tersoff",
+    "boundary_B": "s p s",
+    "dump_every_B": 500,
+    "restart_every_B": 10000,
+    "minimize_B": true,
+    "mobile_definition_B": "subtract all gpCTtsbd gpWPtsbd"
+   },
+   "generated_counts": {
+    "total": 1995350,
+    "workpiece": 1589769,
+    "tool": 405581,
+    "ct_mob": 339031,
+    "ct_ts": 32549,
+    "ct_bd": 34001,
+    "wp_mob": 1360800,
+    "wp_ts": 109800,
+    "wp_bd": 119169
+   },
+   "rows": [
+    {
+     "parameter": "workpiece x_end (A)",
+     "reference": 960.674,
+     "generated": 960.674,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "workpiece surface y (A)",
+     "reference": 436.66999999999996,
+     "generated": 436.66999999999996,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "workpiece width Lz (A)",
+     "reference": 39.3003,
+     "generated": 39.3003,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "depth of cut (A)",
+     "reference": 13.1001,
+     "generated": 13.1001,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "gap (A)",
+     "reference": 8.7334,
+     "generated": 8.7334,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool front x at t=0 (A)",
+     "reference": 969.4073999999999,
+     "generated": 969.4073999999986,
+     "status": "SAME",
+     "note": "reference: block x-lo = dx; generated: foremost point of the rounded edge"
+    },
+    {
+     "parameter": "tool lowest point y (A)",
+     "reference": 423.56989999999996,
+     "generated": 423.56989999999996,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge radius (A)",
+     "reference": 71.42,
+     "generated": 71.42,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool block size (A)",
+     "reference": 249.97,
+     "generated": 249.97,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge centre x (A)",
+     "reference": 1040.8274,
+     "generated": 1040.8273999999994,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge centre y (A)",
+     "reference": 494.9899,
+     "generated": 494.9899,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "wp fixed layer (A)",
+     "reference": 21.8335,
+     "generated": 21.8335,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "wp thermostat layer (A)",
+     "reference": 21.8335,
+     "generated": 21.8335,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool fixed layer (A)",
+     "reference": 10.713000000000001,
+     "generated": 10.713,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool thermostat layer (A)",
+     "reference": 10.713000000000001,
+     "generated": 10.713,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "clearance angle (deg)",
+     "reference": 10.0,
+     "generated": 10.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "equilibration steps",
+     "reference": 10000,
+     "generated": 10000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "equilibration dt (ps)",
+     "reference": 0.0005,
+     "generated": 0.0005,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "temperature (K)",
+     "reference": 300.0,
+     "generated": 300.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "Tdamp (ps)",
+     "reference": 0.05,
+     "generated": 0.05,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting speed (A/ps)",
+     "reference": 2.0,
+     "generated": 2.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting steps",
+     "reference": 200000,
+     "generated": 200000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting dt (ps)",
+     "reference": 0.0005,
+     "generated": 0.0005,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting length (A)",
+     "reference": 200.0,
+     "generated": 200.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "potential in B",
+     "reference": "SiC_1994.tersoff",
+     "generated": "SiC_1994.tersoff",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "potential in A",
+     "reference": "SiC_Erhart-Albe.tersoff",
+     "generated": "SiC_1994.tersoff",
+     "status": "DIFFERENT",
+     "note": "INTENDED: NanoCut uses one potential for A and B (reference equilibrates with Erhart-Albe, cuts with Tersoff-1994)"
+    },
+    {
+     "parameter": "boundary in A",
+     "reference": "s s p",
+     "generated": "s s p",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "boundary in B",
+     "reference": "s p s",
+     "generated": "s s p",
+     "status": "DIFFERENT",
+     "note": "INTENDED: reference B says 's p s' but read_restart overrides it with A's 's s p' (warning in log)"
+    },
+    {
+     "parameter": "dump every in B",
+     "reference": 500,
+     "generated": 500,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "restart every in B",
+     "reference": 10000,
+     "generated": 10000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "minimize in B",
+     "reference": true,
+     "generated": true,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "B reads the restart written by A",
+     "reference": "cut_sic_eq.restart.10000",
+     "generated": "cut_SiC_R20_d10_A.restart -> cut_SiC_R20_d10_A.restart",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "fix 13 property/atom mol re-declared in B",
+     "reference": true,
+     "generated": true,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "pair_coeff mapping",
+     "reference": "C Si C",
+     "generated": "C Si C",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "fix move on tool boundary (B)",
+     "reference": "fix 4 gpCTbd move linear -$v 0 0 units box",
+     "generated": "fix             cut gpCTbd move linear -2.000000 0.0 0.0 units box",
+     "status": "SAME",
+     "note": ""
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "case": "20-20",
+   "reference_parsed": {
+    "a": 4.3667,
+    "b": 3.571,
+    "dx_lat": 220.0,
+    "dy_lat": 95.0,
+    "lr_lat": 20.0,
+    "lx_lat": 70.0,
+    "wp_nx": 220,
+    "wp_ny": 100,
+    "wp_nz": 9,
+    "x_end_A": 960.674,
+    "y_surface_A": 436.66999999999996,
+    "tool_front_x_A": 960.6739999999999,
+    "tool_bottom_y_A": 414.8365,
+    "depth_A": 21.8335,
+    "gap_A": 0.0,
+    "edge_radius_A": 71.42,
+    "tool_block_A": 249.97,
+    "wp_fixed_A": 21.8335,
+    "wp_thermo_A": 21.8335,
+    "tool_fixed_A": 10.713000000000001,
+    "tool_thermo_A": 10.713000000000001,
+    "clearance_deg": 10.0,
+    "equil_steps": 10000,
+    "equil_dt_ps": 0.0005,
+    "T": 300.0,
+    "tdamp": 0.05,
+    "potential_A": "SiC_Erhart-Albe.tersoff",
+    "boundary_A": "s s p",
+    "v_Aps": 2.0,
+    "cut_steps": 300000,
+    "cut_dt_ps": 0.0005,
+    "cut_length_A": 300.0,
+    "potential_B": "SiC_1994.tersoff",
+    "boundary_B": "s p s",
+    "dump_every_B": 500,
+    "restart_every_B": 10000,
+    "minimize_B": true,
+    "mobile_definition_B": "subtract all gpCTtsbd gpWPtsbd"
+   },
+   "generated_counts": {
+    "total": 1995240,
+    "workpiece": 1589769,
+    "tool": 405471,
+    "ct_mob": 338954,
+    "ct_ts": 32538,
+    "ct_bd": 33979,
+    "wp_mob": 1360800,
+    "wp_ts": 109800,
+    "wp_bd": 119169
+   },
+   "rows": [
+    {
+     "parameter": "workpiece x_end (A)",
+     "reference": 960.674,
+     "generated": 960.674,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "workpiece surface y (A)",
+     "reference": 436.66999999999996,
+     "generated": 436.66999999999996,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "workpiece width Lz (A)",
+     "reference": 39.3003,
+     "generated": 39.3003,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "depth of cut (A)",
+     "reference": 21.8335,
+     "generated": 21.8335,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "gap (A)",
+     "reference": 0.0,
+     "generated": 0.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool front x at t=0 (A)",
+     "reference": 960.6739999999999,
+     "generated": 960.6739999999985,
+     "status": "SAME",
+     "note": "reference: block x-lo = dx; generated: foremost point of the rounded edge"
+    },
+    {
+     "parameter": "tool lowest point y (A)",
+     "reference": 414.8365,
+     "generated": 414.83649999999994,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge radius (A)",
+     "reference": 71.42,
+     "generated": 71.42,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool block size (A)",
+     "reference": 249.97,
+     "generated": 249.97,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge centre x (A)",
+     "reference": 1032.0939999999998,
+     "generated": 1032.0939999999994,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge centre y (A)",
+     "reference": 486.2565,
+     "generated": 486.25649999999996,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "wp fixed layer (A)",
+     "reference": 21.8335,
+     "generated": 21.8335,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "wp thermostat layer (A)",
+     "reference": 21.8335,
+     "generated": 21.8335,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool fixed layer (A)",
+     "reference": 10.713000000000001,
+     "generated": 10.713,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool thermostat layer (A)",
+     "reference": 10.713000000000001,
+     "generated": 10.713,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "clearance angle (deg)",
+     "reference": 10.0,
+     "generated": 10.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "equilibration steps",
+     "reference": 10000,
+     "generated": 10000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "equilibration dt (ps)",
+     "reference": 0.0005,
+     "generated": 0.0005,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "temperature (K)",
+     "reference": 300.0,
+     "generated": 300.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "Tdamp (ps)",
+     "reference": 0.05,
+     "generated": 0.05,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting speed (A/ps)",
+     "reference": 2.0,
+     "generated": 2.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting steps",
+     "reference": 300000,
+     "generated": 300000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting dt (ps)",
+     "reference": 0.0005,
+     "generated": 0.0005,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting length (A)",
+     "reference": 300.0,
+     "generated": 300.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "potential in B",
+     "reference": "SiC_1994.tersoff",
+     "generated": "SiC_1994.tersoff",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "potential in A",
+     "reference": "SiC_Erhart-Albe.tersoff",
+     "generated": "SiC_1994.tersoff",
+     "status": "DIFFERENT",
+     "note": "INTENDED: NanoCut uses one potential for A and B (reference equilibrates with Erhart-Albe, cuts with Tersoff-1994)"
+    },
+    {
+     "parameter": "boundary in A",
+     "reference": "s s p",
+     "generated": "s s p",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "boundary in B",
+     "reference": "s p s",
+     "generated": "s s p",
+     "status": "DIFFERENT",
+     "note": "INTENDED: reference B says 's p s' but read_restart overrides it with A's 's s p' (warning in log)"
+    },
+    {
+     "parameter": "dump every in B",
+     "reference": 500,
+     "generated": 500,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "restart every in B",
+     "reference": 10000,
+     "generated": 10000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "minimize in B",
+     "reference": true,
+     "generated": true,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "B reads the restart written by A",
+     "reference": "cut_sic_eq.restart.10000",
+     "generated": "cut_SiC_R20_d20_A.restart -> cut_SiC_R20_d20_A.restart",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "fix 13 property/atom mol re-declared in B",
+     "reference": true,
+     "generated": true,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "pair_coeff mapping",
+     "reference": "C Si C",
+     "generated": "C Si C",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "fix move on tool boundary (B)",
+     "reference": "fix 4 gpCTbd move linear -$v 0 0 units box",
+     "generated": "fix             cut gpCTbd move linear -2.000000 0.0 0.0 units box",
+     "status": "SAME",
+     "note": ""
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "case": "20-30",
+   "reference_parsed": {
+    "a": 4.3667,
+    "b": 3.571,
+    "dx_lat": 222.0,
+    "dy_lat": 93.0,
+    "lr_lat": 20.0,
+    "lx_lat": 70.0,
+    "wp_nx": 220,
+    "wp_ny": 100,
+    "wp_nz": 9,
+    "x_end_A": 960.674,
+    "y_surface_A": 436.66999999999996,
+    "tool_front_x_A": 969.4073999999999,
+    "tool_bottom_y_A": 406.1031,
+    "depth_A": 30.566899999999997,
+    "gap_A": 8.7334,
+    "edge_radius_A": 71.42,
+    "tool_block_A": 249.97,
+    "wp_fixed_A": 21.8335,
+    "wp_thermo_A": 21.8335,
+    "tool_fixed_A": 10.713000000000001,
+    "tool_thermo_A": 10.713000000000001,
+    "clearance_deg": 10.0,
+    "equil_steps": 10000,
+    "equil_dt_ps": 0.0005,
+    "T": 300.0,
+    "tdamp": 0.05,
+    "potential_A": "SiC_Erhart-Albe.tersoff",
+    "boundary_A": "s s p",
+    "v_Aps": 2.0,
+    "cut_steps": 300000,
+    "cut_dt_ps": 0.0005,
+    "cut_length_A": 300.0,
+    "potential_B": "SiC_1994.tersoff",
+    "boundary_B": "s p s",
+    "dump_every_B": 500,
+    "restart_every_B": 10000,
+    "minimize_B": true,
+    "mobile_definition_B": "subtract all gpCTtsbd gpWPtsbd"
+   },
+   "generated_counts": {
+    "total": 1994668,
+    "workpiece": 1589769,
+    "tool": 404899,
+    "ct_mob": 338404,
+    "ct_ts": 32527,
+    "ct_bd": 33968,
+    "wp_mob": 1360800,
+    "wp_ts": 109800,
+    "wp_bd": 119169
+   },
+   "rows": [
+    {
+     "parameter": "workpiece x_end (A)",
+     "reference": 960.674,
+     "generated": 960.674,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "workpiece surface y (A)",
+     "reference": 436.66999999999996,
+     "generated": 436.66999999999996,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "workpiece width Lz (A)",
+     "reference": 39.3003,
+     "generated": 39.3003,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "depth of cut (A)",
+     "reference": 30.566899999999997,
+     "generated": 30.566899999999997,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "gap (A)",
+     "reference": 8.7334,
+     "generated": 8.7334,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool front x at t=0 (A)",
+     "reference": 969.4073999999999,
+     "generated": 969.4073999999986,
+     "status": "SAME",
+     "note": "reference: block x-lo = dx; generated: foremost point of the rounded edge"
+    },
+    {
+     "parameter": "tool lowest point y (A)",
+     "reference": 406.1031,
+     "generated": 406.1031,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge radius (A)",
+     "reference": 71.42,
+     "generated": 71.42,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool block size (A)",
+     "reference": 249.97,
+     "generated": 249.97,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge centre x (A)",
+     "reference": 1040.8274,
+     "generated": 1040.8273999999994,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "edge centre y (A)",
+     "reference": 477.5231,
+     "generated": 477.5231,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "wp fixed layer (A)",
+     "reference": 21.8335,
+     "generated": 21.8335,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "wp thermostat layer (A)",
+     "reference": 21.8335,
+     "generated": 21.8335,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool fixed layer (A)",
+     "reference": 10.713000000000001,
+     "generated": 10.713,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "tool thermostat layer (A)",
+     "reference": 10.713000000000001,
+     "generated": 10.713,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "clearance angle (deg)",
+     "reference": 10.0,
+     "generated": 10.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "equilibration steps",
+     "reference": 10000,
+     "generated": 10000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "equilibration dt (ps)",
+     "reference": 0.0005,
+     "generated": 0.0005,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "temperature (K)",
+     "reference": 300.0,
+     "generated": 300.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "Tdamp (ps)",
+     "reference": 0.05,
+     "generated": 0.05,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting speed (A/ps)",
+     "reference": 2.0,
+     "generated": 2.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting steps",
+     "reference": 300000,
+     "generated": 300000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting dt (ps)",
+     "reference": 0.0005,
+     "generated": 0.0005,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "cutting length (A)",
+     "reference": 300.0,
+     "generated": 300.0,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "potential in B",
+     "reference": "SiC_1994.tersoff",
+     "generated": "SiC_1994.tersoff",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "potential in A",
+     "reference": "SiC_Erhart-Albe.tersoff",
+     "generated": "SiC_1994.tersoff",
+     "status": "DIFFERENT",
+     "note": "INTENDED: NanoCut uses one potential for A and B (reference equilibrates with Erhart-Albe, cuts with Tersoff-1994)"
+    },
+    {
+     "parameter": "boundary in A",
+     "reference": "s s p",
+     "generated": "s s p",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "boundary in B",
+     "reference": "s p s",
+     "generated": "s s p",
+     "status": "DIFFERENT",
+     "note": "INTENDED: reference B says 's p s' but read_restart overrides it with A's 's s p' (warning in log)"
+    },
+    {
+     "parameter": "dump every in B",
+     "reference": 500,
+     "generated": 500,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "restart every in B",
+     "reference": 10000,
+     "generated": 10000,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "minimize in B",
+     "reference": true,
+     "generated": true,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "B reads the restart written by A",
+     "reference": "cut_sic_eq.restart.10000",
+     "generated": "cut_SiC_R20_d30_A.restart -> cut_SiC_R20_d30_A.restart",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "fix 13 property/atom mol re-declared in B",
+     "reference": true,
+     "generated": true,
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "pair_coeff mapping",
+     "reference": "C Si C",
+     "generated": "C Si C",
+     "status": "SAME",
+     "note": ""
+    },
+    {
+     "parameter": "fix move on tool boundary (B)",
+     "reference": "fix 4 gpCTbd move linear -$v 0 0 units box",
+     "generated": "fix             cut gpCTbd move linear -2.000000 0.0 0.0 units box",
+     "status": "SAME",
+     "note": ""
+    }
+   ],
+   "verdict": "PASS"
+  }
+ ],
+ "sensitivity_10_10": [
+  {
+   "varied": "process.depth_nm",
+   "changed_A": [
+    "+#  tool       : Diamond (C), wedge, rake 0.0 deg, clearance 10.0 deg, edge radius 3.571 nm, 24.997 x 24.997 nm, deformable (401797 atoms)",
+    "+#  process    : depth 2.62002 nm, gap 0.0 nm, speed 200.0 m/s = 2.0000 A/ps, cut length 30.0 nm -> 300000 steps of 0.5 fs",
+    "+region          whole block -5.000000 1215.644000 -5.000000 665.439800 0.000000 39.300300 units box",
+    "+region tool_block block 960.674000 1210.644000 410.469800 660.439800 INF INF units box",
+    "+region tool_rake  plane 960.674000 446.179800 0.0 1.000000 -0.000000 0.0 units box",
+    "+region tool_flank plane 1002.584976 411.012315 0.0 -0.173648 0.984808 0.0 units box",
+    "+region tool_kA plane 996.384000 446.179800 0.0 -0.000000 -1.000000 0.0 units box",
+    "+region tool_kB plane 996.384000 446.179800 0.0 -0.984808 -0.173648 0.0 units box",
+    "+region tool_edge cylinder z 996.384000 446.179800 35.710000 INF INF units box",
+    "+region ctTop block 960.674000 1210.644000 649.726800 660.439800 INF INF units box",
+    "+region ctxEnd block 1199.931000 1210.644000 410.469800 660.439800 INF INF units box",
+    "+region ctTSbottom block 960.674000 1199.931000 639.013800 649.726800 INF INF units box",
+    "+region ctTSxEnd block 1189.218000 1199.931000 410.469800 649.726800 INF INF units box"
+   ],
+   "changed_B": [
+    "+#  tool       : Diamond (C), wedge, rake 0.0 deg, clearance 10.0 deg, edge radius 3.571 nm, 24.997 x 24.997 nm, deformable (401797 atoms)",
+    "+#  process    : depth 2.62002 nm, gap 0.0 nm, speed 200.0 m/s = 2.0000 A/ps, cut length 30.0 nm -> 300000 steps of 0.5 fs",
+    "+region          czone cylinder z 968.344000 423.569900 20.000000 INF INF units box move v_xdisp NULL NULL"
+   ]
+  },
+  {
+   "varied": "process.speed_ms",
+   "changed_A": [
+    "+#  process    : depth 1.31001 nm, gap 0.0 nm, speed 100.0 m/s = 1.0000 A/ps, cut length 30.0 nm -> 600000 steps of 0.5 fs"
+   ],
+   "changed_B": [
+    "+#  process    : depth 1.31001 nm, gap 0.0 nm, speed 100.0 m/s = 1.0000 A/ps, cut length 30.0 nm -> 600000 steps of 0.5 fs",
+    "+fix             cut gpCTbd move linear -1.000000 0.0 0.0 units box    # cutting speed 100.0 m/s along -x",
+    "+variable        xdisp equal -1.000000*time    # tool displacement (A) since the start of this run",
+    "+run             600000    # 30.0 nm at 100.0 m/s"
+   ]
+  },
+  {
+   "varied": "tool.edge_radius_nm",
+   "changed_A": [
+    "+#  tool       : Diamond (C), wedge, rake 0.0 deg, clearance 10.0 deg, edge radius 4.571 nm, 24.997 x 24.997 nm, deformable (403755 atoms)",
+    "+region tool_rake  plane 960.674000 469.279900 0.0 1.000000 -0.000000 0.0 units box",
+    "+region tool_flank plane 1014.321458 424.264338 0.0 -0.173648 0.984808 0.0 units box",
+    "+region tool_kA plane 1006.384000 469.279900 0.0 -0.000000 -1.000000 0.0 units box",
+    "+region tool_kB plane 1006.384000 469.279900 0.0 -0.984808 -0.173648 0.0 units box",
+    "+region tool_edge cylinder z 1006.384000 469.279900 45.710000 INF INF units box"
+   ],
+   "changed_B": [
+    "+#  tool       : Diamond (C), wedge, rake 0.0 deg, clearance 10.0 deg, edge radius 4.571 nm, 24.997 x 24.997 nm, deformable (403755 atoms)",
+    "+region          czone cylinder z 982.004000 430.119950 20.000000 INF INF units box move v_xdisp NULL NULL"
+   ]
+  },
+  {
+   "varied": "process.cut_length_nm",
+   "changed_A": [
+    "+#  process    : depth 1.31001 nm, gap 0.0 nm, speed 200.0 m/s = 2.0000 A/ps, cut length 20.0 nm -> 200000 steps of 0.5 fs"
+   ],
+   "changed_B": [
+    "+#  process    : depth 1.31001 nm, gap 0.0 nm, speed 200.0 m/s = 2.0000 A/ps, cut length 20.0 nm -> 200000 steps of 0.5 fs",
+    "+run             200000    # 20.0 nm at 200.0 m/s"
+   ]
+  },
+  {
+   "varied": "thermo.temperature_K",
+   "changed_A": [
+    "+velocity        mobile_eq create 500.0 102456 dist uniform mom yes rot yes",
+    "+fix             eqWP gpWPeq nvt temp 500.0 500.0 0.05",
+    "+fix             eqCT gpCTeq nvt temp 500.0 500.0 0.05"
+   ],
+   "changed_B": [
+    "+fix             thWP gpWPtsbd nvt temp 500.0 500.0 0.05",
+    "+fix             thCT gpCTtsbd nvt temp 500.0 500.0 0.05"
+   ]
+  },
+  {
+   "varied": "workpiece.width_nm",
+   "changed_A": [
+    "+#  workpiece  : 3C-SiC (cubic silicon carbide, zinc-blende), a0 = 4.3667 A, 220x100x18 cells = 96.07 x 43.67 x 7.860 nm (3179538 atoms)",
+    "+#  tool       : Diamond (C), wedge, rake 0.0 deg, clearance 10.0 deg, edge radius 3.571 nm, 24.997 x 24.997 nm, deformable (804408 atoms)",
+    "+region          whole block -5.000000 1215.644000 -5.000000 678.539900 0.000000 78.600600 units box"
+   ],
+   "changed_B": [
+    "+#  workpiece  : 3C-SiC (cubic silicon carbide, zinc-blende), a0 = 4.3667 A, 220x100x18 cells = 96.07 x 43.67 x 7.860 nm (3179538 atoms)",
+    "+#  tool       : Diamond (C), wedge, rake 0.0 deg, clearance 10.0 deg, edge radius 3.571 nm, 24.997 x 24.997 nm, deformable (804408 atoms)"
+   ]
+  },
+  {
+   "varied": "tool.rake_deg",
+   "changed_A": [
+    "+#  tool       : Diamond (C), wedge, rake -10.0 deg, clearance 10.0 deg, edge radius 3.571 nm, 24.997 x 24.997 nm, deformable (431640 atoms)",
+    "+region          whole block -5.000000 1253.970455 -5.000000 678.539900 0.000000 39.300300 units box",
+    "+region tool_block block 954.924000 1248.970455 423.569900 673.539900 INF INF units box",
+    "+region tool_rake  plane 999.542971 453.078924 0.0 0.984808 0.173648 0.0 units box",
+    "+region tool_flank plane 1040.911432 424.112415 0.0 -0.173648 0.984808 0.0 units box",
+    "+region tool_kA plane 1034.710455 459.279900 0.0 0.173648 -0.984808 0.0 units box",
+    "+region tool_kB plane 1034.710455 459.279900 0.0 -0.984808 -0.173648 0.0 units box",
+    "+region tool_edge cylinder z 1034.710455 459.279900 35.710000 INF INF units box",
+    "+region ctTop block 954.924000 1248.970455 662.826900 673.539900 INF INF units box",
+    "+region ctxEnd block 1238.257455 1248.970455 423.569900 673.539900 INF INF units box",
+    "+region ctTSbottom block 954.924000 1238.257455 652.113900 662.826900 INF INF units box",
+    "+region ctTSxEnd block 1227.544455 1238.257455 423.569900 662.826900 INF INF units box"
+   ],
+   "changed_B": [
+    "+#  tool       : Diamond (C), wedge, rake -10.0 deg, clearance 10.0 deg, edge radius 3.571 nm, 24.997 x 24.997 nm, deformable (431640 atoms)",
+    "+region          czone cylinder z 1013.414000 430.119950 20.000000 INF INF units box move v_xdisp NULL NULL"
+   ]
+  }
+ ]
+}

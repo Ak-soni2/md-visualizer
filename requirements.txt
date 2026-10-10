@@ -1,0 +1,6 @@
+numpy>=1.26
+streamlit>=1.40
+plotly>=5.20
+# optional, for CNA/DXA post-processing beyond what the decks dump:
+# ovito>=3.10
+pandas>=2.0

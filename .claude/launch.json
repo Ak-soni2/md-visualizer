@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "nanocut-ui",
+      "runtimeExecutable": "C:\\Users\\Akson\\AppData\\Local\\Temp\\claude\\C--BTP-md-visulaizer\\fcbaba54-c28b-4640-990e-5f14e66c97f4\\scratchpad\\lmpenv\\Scripts\\python.exe",
+      "runtimeArgs": ["-m", "streamlit", "run", "ui/app.py", "--server.port", "8511", "--server.headless", "true"],
+      "port": 8511
+    }
+  ]
+}

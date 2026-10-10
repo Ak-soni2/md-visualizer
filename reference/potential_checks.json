@@ -1,0 +1,451 @@
+[
+ {
+  "file": "SiC_1994.tersoff",
+  "style": "tersoff",
+  "structure": "zincblende",
+  "elements": [
+   "Si",
+   "C"
+  ],
+  "tokens": "Si C",
+  "ref_a0": 4.3596,
+  "ref_Ecoh": 6.34,
+  "source": "expt a0 (Haynes); Ecoh 6.34 eV/atom (Erhart-Albe 2005 Table IV, expt)",
+  "a0": 4.27959310110972,
+  "Ecoh": 6.43383335136965,
+  "error": [],
+  "a0_dev_pct": -1.8351889827112682,
+  "Ecoh_dev_pct": 1.4800213149787047
+ },
+ {
+  "file": "SiC_1989.tersoff",
+  "style": "tersoff",
+  "structure": "zincblende",
+  "elements": [
+   "Si",
+   "C"
+  ],
+  "tokens": "Si C",
+  "ref_a0": 4.3596,
+  "ref_Ecoh": 6.34,
+  "source": "expt; Tersoff 1989 gives a0=4.32 by design",
+  "a0": 4.32106010110142,
+  "Ecoh": 6.16466244624733,
+  "error": [],
+  "a0_dev_pct": -0.8840237383838094,
+  "Ecoh_dev_pct": -2.7655765576130955
+ },
+ {
+  "file": "SiC_1990.tersoff",
+  "style": "tersoff",
+  "structure": "zincblende",
+  "elements": [
+   "Si",
+   "C"
+  ],
+  "tokens": "Si C",
+  "ref_a0": 4.3596,
+  "ref_Ecoh": 6.34,
+  "source": "expt",
+  "a0": 4.3071330934728,
+  "Ecoh": 6.20975739134866,
+  "error": [],
+  "a0_dev_pct": -1.2034798267547655,
+  "Ecoh_dev_pct": -2.054299820999053
+ },
+ {
+  "file": "SiC.tersoff",
+  "style": "tersoff",
+  "structure": "zincblende",
+  "elements": [
+   "Si",
+   "C"
+  ],
+  "tokens": "Si C",
+  "ref_a0": 4.3596,
+  "ref_Ecoh": 6.34,
+  "source": "expt; Tersoff 1989 + errata",
+  "a0": 4.32116989151136,
+  "Ecoh": 6.16378813457352,
+  "error": [],
+  "a0_dev_pct": -0.8815053786732786,
+  "Ecoh_dev_pct": -2.7793669625627784
+ },
+ {
+  "file": "SiC_Erhart-Albe.tersoff",
+  "style": "tersoff",
+  "structure": "zincblende",
+  "elements": [
+   "Si",
+   "C"
+  ],
+  "tokens": "Si C",
+  "ref_a0": 4.359,
+  "ref_Ecoh": 6.34,
+  "source": "Erhart & Albe 2005 Table IV: a0=4.359, Ecoh=6.340 eV/atom (fit)",
+  "a0": 4.35932798419231,
+  "Ecoh": 6.33917412426587,
+  "error": [],
+  "a0_dev_pct": 0.007524298974771328,
+  "Ecoh_dev_pct": -0.013026431137689446
+ },
+ {
+  "file": "SiC.tersoff.zbl",
+  "style": "tersoff/zbl",
+  "structure": "zincblende",
+  "elements": [
+   "Si",
+   "C"
+  ],
+  "tokens": "Si C",
+  "ref_a0": 4.3596,
+  "ref_Ecoh": 6.34,
+  "source": "expt; Devanathan 1998 = Tersoff + ZBL core",
+  "a0": 4.2796019038327,
+  "Ecoh": 6.43386516322243,
+  "error": [],
+  "a0_dev_pct": -1.834987066870827,
+  "Ecoh_dev_pct": 1.480523079218144
+ },
+ {
+  "file": "SiC.vashishta",
+  "style": "vashishta",
+  "structure": "zincblende",
+  "elements": [
+   "Si",
+   "C"
+  ],
+  "tokens": "Si C",
+  "ref_a0": 4.36,
+  "ref_Ecoh": 6.34,
+  "source": "Vashishta 2007: a0=4.36 (fit)",
+  "a0": 4.35817402174116,
+  "Ecoh": 6.34014495002929,
+  "error": [],
+  "a0_dev_pct": -0.0418802352945033,
+  "Ecoh_dev_pct": 0.0022862780645187936
+ },
+ {
+  "file": "SiC_1994.tersoff",
+  "style": "tersoff",
+  "structure": "diamond",
+  "elements": [
+   "C"
+  ],
+  "tokens": "C",
+  "ref_a0": 3.567,
+  "ref_Ecoh": 7.37,
+  "source": "expt diamond (Kittel)",
+  "a0": 3.55629327947465,
+  "Ecoh": 7.4729885104564,
+  "error": [],
+  "a0_dev_pct": -0.3001603735730411,
+  "Ecoh_dev_pct": 1.3974017701004027
+ },
+ {
+  "file": "SiC.tersoff",
+  "style": "tersoff",
+  "structure": "diamond",
+  "elements": [
+   "C"
+  ],
+  "tokens": "C",
+  "ref_a0": 3.567,
+  "ref_Ecoh": 7.37,
+  "source": "expt diamond",
+  "a0": 3.5658353532587,
+  "Ecoh": 7.36819027590204,
+  "error": [],
+  "a0_dev_pct": -0.03265059549482015,
+  "Ecoh_dev_pct": -0.02455527948385327
+ },
+ {
+  "file": "SiC_Erhart-Albe.tersoff",
+  "style": "tersoff",
+  "structure": "diamond",
+  "elements": [
+   "C"
+  ],
+  "tokens": "C",
+  "ref_a0": 3.566,
+  "ref_Ecoh": 7.374,
+  "source": "Erhart-Albe 2005 Table: diamond a0=3.566, Ecoh=7.374",
+  "a0": 3.56571934751349,
+  "Ecoh": 7.37319493570844,
+  "error": [],
+  "a0_dev_pct": -0.007870232375484275,
+  "Ecoh_dev_pct": -0.010917606340647604
+ },
+ {
+  "file": "SiC.tersoff",
+  "style": "tersoff",
+  "structure": "diamond",
+  "elements": [
+   "Si"
+  ],
+  "tokens": "Si",
+  "ref_a0": 5.431,
+  "ref_Ecoh": 4.63,
+  "source": "expt Si (Kittel)",
+  "a0": 5.43211484433085,
+  "Ecoh": 4.62887271387988,
+  "error": [],
+  "a0_dev_pct": 0.02052742277388993,
+  "Ecoh_dev_pct": -0.024347432399998255
+ },
+ {
+  "file": "Si.sw",
+  "style": "sw",
+  "structure": "diamond",
+  "elements": [
+   "Si"
+  ],
+  "tokens": "Si",
+  "ref_a0": 5.431,
+  "ref_Ecoh": 4.337,
+  "source": "SW 1985: a0=5.431 (fit), Ecoh=4.3366 eV/atom (fit)",
+  "a0": 5.43094977840577,
+  "Ecoh": 4.33659999991728,
+  "error": [],
+  "a0_dev_pct": -0.0009247209396052288,
+  "Ecoh_dev_pct": -0.009222967090605601
+ },
+ {
+  "file": "Si.tersoff",
+  "style": "tersoff",
+  "structure": "diamond",
+  "elements": [
+   "Si"
+  ],
+  "tokens": "Si",
+  "ref_a0": 5.432,
+  "ref_Ecoh": 4.63,
+  "source": "Tersoff 1988: a0=5.432, Ecoh=4.63",
+  "a0": 5.43123074846657,
+  "Ecoh": 4.6304121634968,
+  "error": [],
+  "a0_dev_pct": -0.014161478892314953,
+  "Ecoh_dev_pct": 0.008902019369329491
+ },
+ {
+  "file": "Si.tersoff.mod",
+  "style": "tersoff/mod",
+  "structure": "diamond",
+  "elements": [
+   "Si"
+  ],
+  "tokens": "Si",
+  "ref_a0": 5.429,
+  "ref_Ecoh": 4.63,
+  "source": "Kumagai 2007: a0=5.429, Ecoh=4.63",
+  "a0": 5.42900004102496,
+  "Ecoh": 4.62999929234646,
+  "error": [],
+  "a0_dev_pct": 7.556632792335963e-07,
+  "Ecoh_dev_pct": -1.5284093741050297e-05
+ },
+ {
+  "file": "SiCGe.tersoff",
+  "style": "tersoff",
+  "structure": "diamond",
+  "elements": [
+   "Ge"
+  ],
+  "tokens": "Ge",
+  "ref_a0": 5.658,
+  "ref_Ecoh": 3.85,
+  "source": "expt Ge (Kittel); Tersoff 1989 Ge",
+  "a0": 5.65674732661317,
+  "Ecoh": 3.85059957448568,
+  "error": [],
+  "a0_dev_pct": -0.022139861909345554,
+  "Ecoh_dev_pct": 0.01557336326440806
+ },
+ {
+  "file": "SiCGe.tersoff",
+  "style": "tersoff",
+  "structure": "diamond",
+  "elements": [
+   "Si"
+  ],
+  "tokens": "Si(D)",
+  "ref_a0": 5.432,
+  "ref_Ecoh": 4.63,
+  "source": "Tersoff 1989 Si(D)",
+  "a0": 5.43200520399172,
+  "Ecoh": 4.6295950127056,
+  "error": [],
+  "a0_dev_pct": 9.580249851485548e-05,
+  "Ecoh_dev_pct": -0.008747025796968446
+ },
+ {
+  "file": "Cu_mishin1.eam.alloy",
+  "style": "eam/alloy",
+  "structure": "fcc",
+  "elements": [
+   "Cu"
+  ],
+  "tokens": "Cu",
+  "ref_a0": 3.615,
+  "ref_Ecoh": 3.54,
+  "source": "Mishin 2001: a0=3.615, Ecoh=3.54 (fit = expt)",
+  "a0": 3.6149250658887,
+  "Ecoh": 3.54021833020501,
+  "error": [],
+  "a0_dev_pct": -0.002072866149377475,
+  "Ecoh_dev_pct": 0.0061675199155319564
+ },
+ {
+  "file": "Cu_zhou.eam.alloy",
+  "style": "eam/alloy",
+  "structure": "fcc",
+  "elements": [
+   "Cu"
+  ],
+  "tokens": "Cu",
+  "ref_a0": 3.615,
+  "ref_Ecoh": 3.54,
+  "source": "Zhou 2004 Table: a0=3.615, Ec=3.54",
+  "a0": 3.61481324690984,
+  "Ecoh": 3.53980353567057,
+  "error": [],
+  "a0_dev_pct": -0.00516606058534584,
+  "Ecoh_dev_pct": -0.005549839814403377
+ },
+ {
+  "file": "Cu_u3.eam",
+  "style": "eam",
+  "structure": "fcc",
+  "elements": [
+   "Cu"
+  ],
+  "tokens": "",
+  "ref_a0": 3.615,
+  "ref_Ecoh": 3.54,
+  "source": "Foiles 1986: a0=3.615, Ecoh=3.54",
+  "a0": 3.61499997577065,
+  "Ecoh": 3.54000000227979,
+  "error": [],
+  "a0_dev_pct": -6.702448155418846e-07,
+  "Ecoh_dev_pct": 6.440085125570019e-08
+ },
+ {
+  "file": "Al_zhou.eam.alloy",
+  "style": "eam/alloy",
+  "structure": "fcc",
+  "elements": [
+   "Al"
+  ],
+  "tokens": "Al",
+  "ref_a0": 4.05,
+  "ref_Ecoh": 3.36,
+  "source": "Zhou 2004: a0=4.05, Ec=3.36",
+  "a0": 4.0816549007873,
+  "Ecoh": 3.57999865992931,
+  "error": [],
+  "a0_dev_pct": 0.781602488575318,
+  "Ecoh_dev_pct": 6.547579164562804
+ },
+ {
+  "file": "Al_mm.eam.fs",
+  "style": "eam/fs",
+  "structure": "fcc",
+  "elements": [
+   "Al"
+  ],
+  "tokens": "Al",
+  "ref_a0": 4.045,
+  "ref_Ecoh": 3.36,
+  "source": "Mendelev 2008 Al: a0=4.045 (fit), Ecoh 3.36",
+  "a0": 4.04525979708721,
+  "Ecoh": 3.41065695371845,
+  "error": [],
+  "a0_dev_pct": 0.006422672118918296,
+  "Ecoh_dev_pct": 1.507647432096727
+ },
+ {
+  "file": "Ni_u3.eam",
+  "style": "eam",
+  "structure": "fcc",
+  "elements": [
+   "Ni"
+  ],
+  "tokens": "",
+  "ref_a0": 3.52,
+  "ref_Ecoh": 4.45,
+  "source": "Foiles 1986: a0=3.52, Ecoh=4.45",
+  "a0": 3.51999992189403,
+  "Ecoh": 4.45000000357748,
+  "error": [],
+  "a0_dev_pct": -2.21891960613699e-06,
+  "Ecoh_dev_pct": 8.039280103045886e-08
+ },
+ {
+  "file": "Au_u3.eam",
+  "style": "eam",
+  "structure": "fcc",
+  "elements": [
+   "Au"
+  ],
+  "tokens": "",
+  "ref_a0": 4.08,
+  "ref_Ecoh": 3.93,
+  "source": "Foiles 1986: a0=4.08, Ecoh=3.93",
+  "a0": 4.08000001831395,
+  "Ecoh": 3.93000000017677,
+  "error": [],
+  "a0_dev_pct": 4.488713322605436e-07,
+  "Ecoh_dev_pct": 4.497956996967364e-09
+ },
+ {
+  "file": "Ag_u3.eam",
+  "style": "eam",
+  "structure": "fcc",
+  "elements": [
+   "Ag"
+  ],
+  "tokens": "",
+  "ref_a0": 4.09,
+  "ref_Ecoh": 2.85,
+  "source": "Foiles 1986: a0=4.09, Ecoh=2.85",
+  "a0": 4.08999992367558,
+  "Ecoh": 2.85000000156587,
+  "error": [],
+  "a0_dev_pct": -1.8661227303988412e-06,
+  "Ecoh_dev_pct": 5.4942810535114974e-08
+ },
+ {
+  "file": "Fe_mm.eam.fs",
+  "style": "eam/fs",
+  "structure": "bcc",
+  "elements": [
+   "Fe"
+  ],
+  "tokens": "Fe",
+  "ref_a0": 2.8553,
+  "ref_Ecoh": 4.122,
+  "source": "Mendelev 2003 potential 2: a0=2.8553, Ecoh=4.122 (fit)",
+  "a0": 2.85532486059017,
+  "Ecoh": 4.12243510206087,
+  "error": [],
+  "a0_dev_pct": 0.0008706822460000486,
+  "Ecoh_dev_pct": 0.010555605552411083
+ },
+ {
+  "file": "W_zhou.eam.alloy",
+  "style": "eam/alloy",
+  "structure": "bcc",
+  "elements": [
+   "W"
+  ],
+  "tokens": "W",
+  "ref_a0": 3.165,
+  "ref_Ecoh": 8.89,
+  "source": "Zhou 2004: a0=3.165, Ec=8.89",
+  "a0": 3.16484945544441,
+  "Ecoh": 8.75999406485622,
+  "error": [],
+  "a0_dev_pct": -0.004756542040759831,
+  "Ecoh_dev_pct": -1.4623839723709773
+ }
+]

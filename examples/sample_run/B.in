@@ -1,0 +1,87 @@
+# ================================================================================
+#  NanoCut v0.1.0  -  deck B (cut)  -  generated 2026-10-10
+#  experiment : cut_SiC_R10_d10_preview
+#  workpiece  : 3C-SiC (cubic silicon carbide, zinc-blende), a0 = 4.3667 A, 41x41x4 cells = 17.90 x 17.90 x 1.747 nm (54452 atoms)
+#  tool       : Diamond (C), wedge, rake 0.0 deg, clearance 10.0 deg, edge radius 3.571 nm, 12.4272 x 12.4272 nm, deformable (43363 atoms)
+#  process    : depth 1.31001 nm, gap 0.0 nm, speed 200.0 m/s = 2.0000 A/ps, cut length 0.3 nm -> 3000 steps of 0.5 fs
+#  potential  : Tersoff Si-C (1994, smooth cutoffs)  [J. Tersoff, Phys. Rev. B 49, 16349 (1994); file DATE 2011-05-03]
+#  units metal: A, ps, eV, K, g/mol, bar; velocity A/ps; force eV/A (x1.602 = nN)
+#  layers via mol tag: 1 tool mobile, 2 tool thermostat, 3 tool fixed, 4 wp mobile, 5 wp thermostat, 6 wp fixed
+# ================================================================================
+
+units           metal
+dimension       3
+boundary        s s p    # x,y shrink-wrapped; z (width) periodic
+atom_style      atomic
+
+# ---------------- restart (restores box, atoms, groups, masses; NOT pair_coeff/fixes/computes) ----------------
+read_restart    cut_SiC_R10_d10_preview_A.restart
+reset_timestep  0
+fix             13 all property/atom mol    # same ID as in deck A re-enables the stored tags
+
+# ---------------- groups (from mol tags written in deck A) ----------------
+group           gpCTall type 1
+group           gpCTbd molecule 3
+group           gpCTtsbd molecule 2
+group           gpCTmob molecule 1
+group           gpWPall type 2 3
+group           gpWPbd molecule 6
+group           gpWPtsbd molecule 5
+group           gpWPmob molecule 4
+group           mobile union gpWPmob gpCTmob
+
+mass            1 12.011    # C
+mass            2 28.0855    # Si
+mass            3 12.011    # C
+
+# ---------------- force field ----------------
+pair_style      tersoff
+pair_coeff      * * SiC_1994.tersoff C Si C    # type order: 1=C 2=Si 3=C
+
+min_style       cg
+minimize        1.0e-4 1.0e-6 100 1000
+
+# ---------------- temperature computes ----------------
+compute         Twp gpWPmob temp/partial 0 1 1    # workpiece Newtonian zone
+compute         TwpTS gpWPtsbd temp/partial 0 1 1
+compute         Tct gpCTmob temp/com    # tool, streaming velocity removed
+compute         TctTS gpCTtsbd temp/com
+
+# ---------------- integration ----------------
+timestep        0.0005    # ps (0.5 fs)
+fix             thWP gpWPtsbd nvt temp 300.0 300.0 0.05
+fix_modify      thWP temp TwpTS
+fix             thCT gpCTtsbd nvt temp 300.0 300.0 0.05
+fix_modify      thCT temp TctTS
+fix             holdWP gpWPbd move linear 0.0 0.0 0.0 units box
+fix             cut gpCTbd move linear -2.000000 0.0 0.0 units box    # cutting speed 200.0 m/s along -x
+fix             intg mobile nve
+fix             bal all balance 30 1.05 shift xy 10 1.05
+
+# ---------------- cutting forces (sum of per-atom forces on the tool; group/group is invalid for many-body styles) ----------------
+compute         fsum gpCTall reduce sum fx fy fz
+variable        Fc equal c_fsum[1]*1.602176634    # nN, +x = resistance to cutting (tool moves -x)
+variable        Ft equal c_fsum[2]*1.602176634    # nN, thrust (+y pushes the tool up)
+variable        Fz equal c_fsum[3]*1.602176634    # nN, lateral
+variable        xdisp equal -2.000000*time    # tool displacement (A) since the start of this run
+region          czone cylinder z 179.034700 172.484650 20.000000 INF INF units box move v_xdisp NULL NULL
+compute         Tcz gpWPmob temp/region czone    # workpiece atoms within the contact zone (follows the edge)
+fix             fout all ave/time 10 5 50 v_Fc v_Ft v_Fz c_Twp c_Tcz c_TwpTS c_Tct c_TctTS file cut_SiC_R10_d10_preview_forces_temps.txt title2 "# step Fc_nN Ft_nN Fz_nN Twp_K Tcz_K TwpTS_K Tct_K TctTS_K"
+
+# ---------------- per-atom quantities for OVITO / post-processing ----------------
+compute         ke all ke/atom
+fix             keav all ave/atom 10 10 100 c_ke    # time-averaged KE -> local temperature
+compute         pe all pe/atom
+compute         s all stress/atom NULL    # bar*A^3; divide by atomic volume and 1e4 -> GPa
+compute         cn all coord/atom cutoff 2.6    # coordination number
+
+thermo_style    custom step time temp c_Twp c_Tct c_Tcz pe ke v_Fc v_Ft cpuremain
+thermo          100
+thermo_modify   flush yes
+dump            cut all custom 100 cut_SiC_R10_d10_preview_cut.*.lammpstrj id type mol x y z vx vy vz fx fy fz c_ke f_keav c_pe c_s[1] c_s[2] c_s[3] c_s[4] c_s[5] c_s[6] c_cn
+dump_modify     cut element C Si C
+restart         1000000000 cut_SiC_R10_d10_preview_cut.*.restart
+
+run             3000    # 0.3 nm at 200.0 m/s
+write_restart   cut_SiC_R10_d10_preview_B.restart
+print           "B done"

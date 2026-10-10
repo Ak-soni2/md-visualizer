@@ -1,0 +1,179 @@
+{
+  "nanocut_version": "0.1.0",
+  "experiment": {
+    "name": "cut_SiC_R10_d10_preview",
+    "workpiece": {
+      "material": "3C-SiC",
+      "a0": 4.3667,
+      "orient_x": [
+        1,
+        0,
+        0
+      ],
+      "orient_y": [
+        0,
+        1,
+        0
+      ],
+      "orient_z": [
+        0,
+        0,
+        1
+      ],
+      "length_nm": 17.72012,
+      "height_nm": 17.72012,
+      "width_nm": 1.74668,
+      "fixed_nm": 2.18335,
+      "thermo_nm": 2.18335,
+      "anchor_far_end": false
+    },
+    "tool": {
+      "material": "diamond",
+      "a0": 3.571,
+      "orient_x": [
+        1,
+        0,
+        0
+      ],
+      "orient_y": [
+        0,
+        1,
+        0
+      ],
+      "orient_z": [
+        0,
+        0,
+        1
+      ],
+      "origin_shift": [
+        0.0,
+        0.0,
+        0.4
+      ],
+      "shape": "wedge",
+      "rake_deg": 0.0,
+      "clearance_deg": 10.0,
+      "edge_radius_nm": 3.571,
+      "length_nm": 12.4272,
+      "height_nm": 12.4272,
+      "sphere_radius_nm": 8.0,
+      "deformable": true,
+      "fixed_nm": 1.0713,
+      "thermo_nm": 1.0713
+    },
+    "process": {
+      "depth_nm": 1.31001,
+      "gap_nm": 0.0,
+      "speed_ms": 200.0,
+      "cut_length_nm": 0.3
+    },
+    "potential": {
+      "key": "SiC_1994",
+      "cross_style": "auto",
+      "morse_D": null,
+      "morse_alpha": null,
+      "morse_r0": null,
+      "morse_rc": 6.5,
+      "lj_eps": null,
+      "lj_sigma": null
+    },
+    "thermo": {
+      "temperature_K": 300.0,
+      "seed": 102456,
+      "velocity_dist": "uniform",
+      "minimize_before_equil": false,
+      "equil_ps": 0.3,
+      "equil_dt_fs": 0.5,
+      "tdamp_ps": 0.05,
+      "equil_thermostat": "nvt",
+      "cut_dt_fs": 0.5,
+      "minimize_before_cut": true,
+      "cut_thermostat": "nvt",
+      "wp_temp_compute": "temp/partial"
+    },
+    "output": {
+      "thermo_every": 100,
+      "dump_every_equil": 1000000000,
+      "dump_every_cut": 100,
+      "restart_every_equil": 1000000000,
+      "restart_every_cut": 1000000000,
+      "forces_every": 50,
+      "dump_velocities": true,
+      "dump_forces": true,
+      "dump_ke": true,
+      "dump_pe": true,
+      "dump_stress": true,
+      "dump_coord": true,
+      "dump_cna": false,
+      "contact_zone_radius_nm": 2.0
+    },
+    "compute": {
+      "mpi_ranks": 10,
+      "omp_threads": 1,
+      "lammps_cmd": "lmp"
+    }
+  },
+  "model": {
+    "Lx_A": 179.0347,
+    "Ly_A": 179.0347,
+    "Lz_A": 17.4668,
+    "cells": [
+      41,
+      41,
+      4
+    ],
+    "y_surface_A": 179.0347,
+    "x_end_A": 179.0347,
+    "edge_center_A": [
+      206.6747000000018,
+      201.6446
+    ],
+    "contact_point_A": [
+      179.0347,
+      172.48465
+    ],
+    "tool_xmin_A": 170.96470000000087,
+    "tool_xmax_A": 295.23670000000175,
+    "tool_top_A": 290.2066,
+    "box_A": [
+      -5.0,
+      300.23670000000175,
+      -5.0,
+      295.2066,
+      0.0,
+      17.4668
+    ],
+    "counts": {
+      "total": 97815,
+      "workpiece": 54452,
+      "tool": 43363,
+      "ct_mob": 29689,
+      "ct_ts": 6526,
+      "ct_bd": 7148,
+      "wp_mob": 30752,
+      "wp_ts": 10720,
+      "wp_bd": 12980
+    },
+    "types": [
+      "C",
+      "Si",
+      "C"
+    ],
+    "speed_A_per_ps": 2.0,
+    "cut_steps": 3000,
+    "equil_steps": 600,
+    "periodic_mismatch_A": 1.397299999999997
+  },
+  "potential": {
+    "file": "SiC_1994.tersoff",
+    "style": "tersoff",
+    "tokens": {
+      "Si": "Si",
+      "C": "C"
+    },
+    "label": "Tersoff Si-C (1994, smooth cutoffs)",
+    "dt_fs": 0.5,
+    "citation": "J. Tersoff, Phys. Rev. B 49, 16349 (1994); file DATE 2011-05-03",
+    "note": "Potential used for the cutting stage (B) of the reference decks (variable potential = y94)."
+  }
+}
