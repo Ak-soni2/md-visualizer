@@ -213,6 +213,27 @@ if ost.get("available"):
     ost3 = lv.get("stats", {})
     check("OVITO live frame: particles, positions, binary layout", n == 97815 and len(raw) == n * 12 + n * 3 + (-n * 3) % 4 + n * 4
           and abs(float(pos[:, 1].max()) - ost3.get("Position.Y", [0, 0])[1]) < 1e-3, f"{n} particles, {len(raw)} bytes")
+    # frame export: the CSV is the dump, column by column; force averages and per-type sums equal pandas on the dump
+    import io as _io
+    import zipfile as _zf
+    fx = job_result(wait("/api/ovito/frames", "post", json={"spec": dict(lspec, frame=0, modifiers=[]), "frames": [2, 2, 0], "csv": True, "stats": True}))
+    z = _zf.ZipFile(_io.BytesIO(c.get(f"/api/ovito/file/{fx.get('zip')}").content))
+    dpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "examples", "sample_run", "cut_SiC_R10_d10_preview_cut.2500.lammpstrj")
+    with open(dpath) as fh:
+        head = [next(fh) for _ in range(9)]
+    dcols = head[8].split()[2:]
+    dump = pd.read_csv(dpath, sep=r"\s+", skiprows=9, header=None, names=dcols)
+    csv2 = pd.read_csv(z.open("frame_2.csv"))
+    r2 = next(r for r in fx.get("rows", []) if r["frame"] == 2)
+    F = dump[["fx", "fy", "fz"]].to_numpy()
+    tool = dump[dump["type"] == 1][["fx", "fy", "fz"]].sum().to_numpy()
+    check("frame export: CSV equals the dump, frames sorted and unique", [r["frame"] for r in fx.get("rows", [])] == [0, 2] and sorted(z.namelist()) == ["frame_0.csv", "frame_2.csv"]
+          and list(csv2.columns) == dcols and all(np.array_equal(csv2[k].to_numpy(float), dump[k].to_numpy(float)) for k in dcols), f"{len(dcols)} columns x {len(dump)} rows")
+    check("frame export: force averages and tool force sum equal pandas", abs(r2["force"]["mean_magnitude"] - np.sqrt((F ** 2).sum(1)).mean()) < 1e-9
+          and abs(r2["force"]["mean_fx"] - F[:, 0].mean()) < 1e-12 and np.allclose([r2["force_by_type"]["1"][k] for k in ("sum_fx", "sum_fy", "sum_fz")], tool, rtol=1e-12),
+          f"tool sum F = {np.round(tool, 4)}")
+    xl = c.post("/api/ovito/frames/xlsx", json={"rows": fx["rows"], "meta": fx["meta"], "columns": ["c_pe", "fx"], "stats": ["mean"]})
+    check("frame statistics Excel workbook", xl.status_code == 200 and xl.content[:2] == b"PK", f"{len(xl.content)} bytes")
     check("OVITO live colours: 43,363 selected (tool) drawn in OVITO's selection colour", int((col == [255, 0, 0]).all(1).sum()) == 43363,
           f"{int((col == [255, 0, 0]).all(1).sum())} red")
 

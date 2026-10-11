@@ -9,6 +9,7 @@ ops: hello | info {import_path, multiple_frames, frame} | run {spec, image_path}
      | displacements {import_path, multiple_frames, frame, reference, out} (for the Studio cross-check)
 """
 import hashlib
+import io
 import json
 import os
 import sys
@@ -253,7 +254,114 @@ def op_atom(req):
     return dict(frame=frame, index=i, values=row)
 
 
-OPS = {"hello": lambda r: dict(ovito=ovito.version_string, pid=os.getpid()), "info": op_info, "run": op_run,
+# ------------------------------------------------------------------------------------------------ frame export / statistics
+# LAMMPS dump column -> OVITO property component, for the columns OVITO stores unchanged (values identical to the dump).
+# Columns OVITO converts (xs/ys/zs -> absolute Position, diameter -> Radius) are not mapped back: they keep OVITO's name.
+DUMP_TO_OVITO = {"id": "Particle Identifier", "type": "Particle Type", "mol": "Molecule Identifier", "mass": "Mass", "q": "Charge",
+                 "x": "Position.X", "y": "Position.Y", "z": "Position.Z", "xu": "Position.X", "yu": "Position.Y", "zu": "Position.Z",
+                 "vx": "Velocity.X", "vy": "Velocity.Y", "vz": "Velocity.Z", "fx": "Force.X", "fy": "Force.Y", "fz": "Force.Z",
+                 "ix": "Periodic Image.X", "iy": "Periodic Image.Y", "iz": "Periodic Image.Z", "radius": "Radius",
+                 "omegax": "Angular Velocity.X", "omegay": "Angular Velocity.Y", "omegaz": "Angular Velocity.Z",
+                 "angmomx": "Angular Momentum.X", "angmomy": "Angular Momentum.Y", "angmomz": "Angular Momentum.Z",
+                 "tqx": "Torque.X", "tqy": "Torque.Y", "tqz": "Torque.Z"}
+_raw = {}                                    # source -> pipeline without modifiers (sharing the cached file source)
+
+
+def _components(P):
+    """(property, OVITO name of the component, 1-D array) in OVITO's order."""
+    for name in P.keys():
+        arr = np.asarray(P[name])
+        if arr.ndim == 1:
+            yield name, name, arr
+        else:
+            comps = P[name].component_names or [str(i) for i in range(arr.shape[1])]
+            for i, cn in enumerate(comps):
+                yield name, f"{name}.{cn}", arr[:, i]
+
+
+def _stats(arr):
+    a = np.asarray(arr, dtype=np.float64)
+    ok = np.isfinite(a)
+    n = int(ok.sum())
+    if not n:
+        return dict(n=0, mean=None, std=None, min=None, max=None)
+    v = a[ok]
+    return dict(n=n, mean=float(v.mean()), std=float(v.std()), min=float(v.min()), max=float(v.max()))
+
+
+def op_frame_table(req):
+    """One frame for the Frame export: OVITO computes it (raw dump data, or after the page's pipeline), optionally
+    appends its CSV to a ZIP, and returns per-column statistics plus the force averages."""
+    from ovito.pipeline import Pipeline
+    import pandas as pd
+    import zipfile
+    spec, frame = req["spec"], int(req["frame"])
+    if req.get("apply_pipeline"):
+        pl = _live_pipeline(spec)["pipeline"]
+    else:
+        src = spec["source"]
+        k = (src["import_path"], bool(src.get("multiple_frames")))
+        if k not in _raw:
+            _raw[k] = Pipeline(source=cached_pipeline(*k).source)
+        pl = _raw[k]
+    data = pl.compute(frame)
+    P = data.particles
+    dump_cols = [c for c in req.get("dump_columns") or [] if isinstance(c, str)]
+    to_dump = {}
+    for c in dump_cols:                                       # OVITO component -> dump column (first one wins: x before xu)
+        o = DUMP_TO_OVITO.get(c, c)
+        to_dump.setdefault(o, c)
+    raw_props = set(req.get("raw_properties") or [])
+    cols, skipped = [], []
+    for prop, oname, arr in _components(P):
+        if oname in to_dump:
+            cols.append((to_dump[oname], oname, "dump file", arr))
+        elif prop in raw_props:                                 # made by OVITO while reading (e.g. Velocity Magnitude)
+            (cols.append((oname, oname, "derived by OVITO", arr)) if req.get("include_derived") else skipped.append(oname))
+        else:                                                   # output of a modifier of the pipeline
+            cols.append((oname, oname, "OVITO pipeline", arr))
+    order = {c: i for i, c in enumerate(dump_cols)}
+    cols.sort(key=lambda c: (order.get(c[0], len(order)), c[0] if c[0] not in order else ""))
+    if "element" in dump_cols and P.particle_types is not None:   # element names, as in the dump
+        names = {t.id: t.name for t in P.particle_types.types}
+        at = sum(1 for c in cols if order.get(c[0], len(order)) < order["element"])
+        cols.insert(at, ("element", "Particle Type (name)", "dump file",
+                                                              np.array([names.get(int(t), "") for t in np.asarray(P.particle_types)], dtype=object)))
+    out = dict(frame=frame, timestep=_jsonable(data.attributes.get("Timestep")), count=int(P.count), skipped=skipped,
+               columns=[dict(name=h, ovito=o, origin=g) for h, o, g, _ in cols])
+    if req.get("zip_path"):
+        df = pd.DataFrame({h: a for h, _, _, a in cols}, copy=False)
+        with zipfile.ZipFile(req["zip_path"], "a", zipfile.ZIP_DEFLATED, compresslevel=1) as zf:
+            with zf.open(f"frame_{frame}.csv", "w", force_zip64=True) as f:
+                df.to_csv(io.TextIOWrapper(f, encoding="utf-8", newline=""), index=False)   # floats as Python repr: exact
+    if req.get("stats"):
+        out["stats"] = {h: _stats(a) for h, _, _, a in cols if a.dtype != object}
+        has = "Force" in P
+        F = np.asarray(P["Force"], dtype=np.float64) if has else None
+
+        def force_stats(mask):
+            fs = dict(available=["Fx", "Fy", "Fz"] if has else [], missing=[] if has else ["Fx", "Fy", "Fz"], n=int(mask.sum()))
+            if not has:
+                return fs
+            ok = mask & np.isfinite(F).all(1)                   # particles with all three components finite
+            n = int(ok.sum())
+            fs.update(n_valid=n, n_invalid=int(mask.sum() - n))
+            if n:
+                Fv = F[ok]
+                mean, tot = Fv.mean(0), Fv.sum(0)
+                fs.update(mean_fx=float(mean[0]), mean_fy=float(mean[1]), mean_fz=float(mean[2]),
+                          sum_fx=float(tot[0]), sum_fy=float(tot[1]), sum_fz=float(tot[2]),
+                          mean_magnitude=float(np.sqrt((Fv ** 2).sum(1)).mean()), magnitude_of_mean=float(np.sqrt((mean ** 2).sum())))
+            return fs
+        out["force"] = force_stats(np.ones(P.count, bool))
+        if P.particle_types is not None:                        # e.g. the tool's total force = the cutting force
+            t = np.asarray(P.particle_types)
+            names = {ty.id: ty.name for ty in P.particle_types.types}
+            out["force_by_type"] = {str(int(tid)): dict(force_stats(t == tid), name=names.get(int(tid)) or "") for tid in np.unique(t)}
+    return out
+
+
+OPS = {"hello": lambda r: dict(ovito=ovito.version_string, pid=os.getpid()), "info": op_info, "run": op_run, "frame_table": op_frame_table,
        "export": op_export, "displacements": op_displacements, "live": op_live, "atom": op_atom}
 
 for line in sys.stdin:

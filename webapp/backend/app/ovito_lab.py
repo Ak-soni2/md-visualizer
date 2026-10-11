@@ -277,6 +277,172 @@ def atom(body: dict = Body(...)):
         raise HTTPException(409, str(e))
 
 
+# ---------------------------------------------------------------------------------------------- frame export & statistics
+_cancel = set()
+MAX_FRAMES = 100_000
+
+
+def _dump_columns(src):
+    """Column names of the first dump file of the source (as written by LAMMPS, from its 'ITEM: ATOMS' line)."""
+    p = Path(src["import_path"])
+    files = sorted(p.parent.glob(p.name), key=lambda f: [int(x) if x.isdigit() else x for x in re.split(r"(\d+)", f.name)]) if "*" in p.name else [p]
+    if not files:
+        return []
+    try:
+        return studio._header_at(str(files[0]), 0)["columns"]
+    except Exception:
+        return []
+
+
+@router.post("/frames")
+def frames_job(body: dict = Body(...)):
+    """Selected frames through OVITO: a ZIP with one CSV per frame (all particle columns) and/or per-frame statistics
+    (count, mean, std, min, max of every numeric column; force averages). body: {spec, frames, apply_pipeline,
+    include_derived, csv, stats, token}."""
+    try:
+        spec = _spec(body)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    want_csv, want_stats = bool(body.get("csv")), bool(body.get("stats"))
+    if not (want_csv or want_stats):
+        raise HTTPException(422, "nothing to do: ask for csv and/or stats")
+    try:
+        frames = sorted({int(f) for f in body.get("frames") or []})
+    except (TypeError, ValueError):
+        raise HTTPException(422, "frames must be integers")
+    if not frames:
+        raise HTTPException(422, "no frames selected")
+    if len(frames) > MAX_FRAMES:
+        raise HTTPException(422, f"at most {MAX_FRAMES} frames per export")
+    token = str(body.get("token") or uuid.uuid4().hex)
+    src = spec["source"]
+
+    def run(progress=None):
+        info = worker.ask({"op": "info", "frame": 0, **src})
+        n = info["num_frames"]
+        bad = [f for f in frames if not 0 <= f < n]
+        if bad:
+            raise ValueError(f"frames outside 0 … {n - 1}: {bad[:20]}{' …' if len(bad) > 20 else ''}")
+        dump_cols = _dump_columns(src)
+        zip_name = f"frames_{uuid.uuid4().hex[:10]}.zip" if want_csv else None
+        rows, t0 = [], time.time()
+        try:
+            for k, f in enumerate(frames):
+                if token in _cancel:
+                    raise RuntimeError(f"cancelled after {k} of {len(frames)} frames")
+                if progress:
+                    eta = (time.time() - t0) / k * (len(frames) - k) if k else None
+                    progress(k / len(frames), f"frame {f} ({k + 1} of {len(frames)})" + (f", about {eta:.0f} s left" if eta else ""))
+                rows.append(worker.ask({"op": "frame_table", "spec": spec, "frame": f, "apply_pipeline": bool(body.get("apply_pipeline")),
+                                        "include_derived": bool(body.get("include_derived")), "dump_columns": dump_cols,
+                                        "raw_properties": info["properties"], "stats": want_stats,
+                                        "zip_path": str(OUT_DIR / zip_name) if zip_name else None}))
+        except Exception:
+            if zip_name:
+                (OUT_DIR / zip_name).unlink(missing_ok=True)
+            raise
+        finally:
+            _cancel.discard(token)
+        _prune()
+        meta = dict(source=src.get("label"), import_path=src["import_path"], total_frames=n, frames=frames, dump_columns=dump_cols,
+                    apply_pipeline=bool(body.get("apply_pipeline")), include_derived=bool(body.get("include_derived")),
+                    modifiers=[m.get("type") for m in spec.get("modifiers") or [] if m.get("enabled", True)] if body.get("apply_pipeline") else [],
+                    ovito=worker.info.get("ovito") if worker.info else None, seconds=round(time.time() - t0, 2))
+        return dict(zip=zip_name, bytes=(OUT_DIR / zip_name).stat().st_size if zip_name else 0, rows=rows, meta=meta)
+    return _job(f"ovito-frames:{token}", "OVITO exports frames" if want_csv else "OVITO computes frame statistics", run)
+
+
+@router.post("/frames/cancel/{token}")
+def frames_cancel(token: str):
+    _cancel.add(token)
+    return dict(cancelling=token)
+
+
+@router.post("/frames/xlsx")
+def frames_xlsx(body: dict = Body(...)):
+    """Excel workbook of the frame statistics: Frame Statistics (force averages), Export Metadata, then one sheet per
+    group of columns (computes c_*, fixes f_*, variables v_*, displacement, positions/velocities, others), restricted
+    to the columns and statistics chosen on the page. body: {rows, meta, columns: [...], stats: [...], selection: {...}}."""
+    from io import BytesIO
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+    rows, meta = body.get("rows") or [], body.get("meta") or {}
+    chosen = [c for c in body.get("columns") or [] if isinstance(c, str)]
+    stat_keys = [s for s in body.get("stats") or ["mean"] if s in ("n", "mean", "std", "min", "max")] or ["mean"]
+    if not rows:
+        raise HTTPException(422, "no statistics to export; calculate them first")
+    wb = Workbook()
+    head_font, head_fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="2F3B4A")
+
+    def sheet(ws, header, data, widths=None):
+        ws.append(header)
+        for c in ws[1]:
+            c.font, c.fill, c.alignment = head_font, head_fill, Alignment(horizontal="center", vertical="center", wrap_text=True)
+        for r in data:
+            ws.append(r)
+        ws.freeze_panes = "B2"
+        for i, h in enumerate(header, 1):
+            ws.column_dimensions[get_column_letter(i)].width = (widths or {}).get(i, max(12, min(40, len(str(h)) + 2)))
+        for col in ws.iter_cols(min_row=2):
+            for c in col:
+                if isinstance(c.value, float):
+                    c.number_format = "0.000000E+00" if c.value and (abs(c.value) >= 1e6 or abs(c.value) < 1e-3) else "0.000000"
+
+    ws = wb.active
+    ws.title = "Frame Statistics"
+    FK = ("mean_fx", "mean_fy", "mean_fz", "mean_magnitude", "magnitude_of_mean", "sum_fx", "sum_fy", "sum_fz")
+    FL = ["Mean Fx", "Mean Fy", "Mean Fz", "Mean force magnitude  mean(|F_i|)", "Magnitude of mean force  |mean(F)|", "Sum Fx", "Sum Fy", "Sum Fz"]
+    sheet(ws, ["Frame", "Timestep", "Particle count", "Valid force particles"] + FL,
+          [[r["frame"], r.get("timestep"), r.get("count"), (r.get("force") or {}).get("n_valid"), *[(r.get("force") or {}).get(k) for k in FK]] for r in rows])
+    types = sorted({t for r in rows for t in (r.get("force_by_type") or {})}, key=int)
+    by_type_ws = None
+    if types and any((r.get("force") or {}).get("n_valid") is not None for r in rows):
+        by_type_ws = (types, [[r["frame"], r.get("timestep")] + [((r.get("force_by_type") or {}).get(t) or {}).get(k) for t in types for k in ("n_valid",) + FK] for r in rows])
+    groups = [("Computes (c_)", lambda c: c.startswith("c_")), ("Fixes (f_)", lambda c: c.startswith("f_")), ("Variables (v_)", lambda c: c.startswith("v_")),
+              ("Displacement", lambda c: c.startswith("Displacement")),
+              ("Positions, velocities, forces", lambda c: c in ("x", "y", "z", "xu", "yu", "zu", "vx", "vy", "vz", "fx", "fy", "fz") or c.split(".")[0] in ("Position", "Velocity", "Force", "Velocity Magnitude")),
+              ("Other properties", lambda c: True)]
+    meta_ws = wb.create_sheet("Export Metadata")             # sheet 2; filled at the end
+    if by_type_ws:
+        tnames = {t: next(((r.get("force_by_type") or {}).get(t, {}).get("name") for r in rows if (r.get("force_by_type") or {}).get(t)), "") for t in by_type_ws[0]}
+        sheet(wb.create_sheet("Force by particle type"), ["Frame", "Timestep"] +
+              [f"type {t}{' ' + tnames[t] if tnames[t] else ''}: {h}" for t in by_type_ws[0] for h in ["valid particles"] + FL], by_type_ws[1])
+    placed = set()
+    label = {"n": "valid count", "mean": "mean", "std": "std (population)", "min": "min", "max": "max"}
+    for title, test in groups:
+        cols = [c for c in chosen if c not in placed and test(c)]
+        if not cols:
+            continue
+        placed.update(cols)
+        header = ["Frame", "Timestep"] + [f"{c} {label[s]}" for c in cols for s in stat_keys]
+        data = [[r["frame"], r.get("timestep")] + [((r.get("stats") or {}).get(c) or {}).get(s) for c in cols for s in stat_keys] for r in rows]
+        sheet(wb.create_sheet(title[:31]), header, data)
+    sel = body.get("selection") or {}
+    origins = {}
+    for r in rows:
+        for c in r.get("columns") or []:
+            origins.setdefault(c["name"], f"{c['origin']} (OVITO: {c['ovito']})")
+    md = [["Source", meta.get("source")], ["Import path", meta.get("import_path")], ["Total frames available", meta.get("total_frames")],
+          ["Selected frames", ", ".join(map(str, meta.get("frames") or []))], ["Number of selected frames", len(meta.get("frames") or [])],
+          ["Frame-selection mode", sel.get("mode")], ["Selection parameters", json.dumps({k: v for k, v in sel.items() if k != "mode"})],
+          ["Data", "after the OVITO pipeline: " + ", ".join(meta.get("modifiers") or []) if meta.get("apply_pipeline") else "as read from the dump file (no modifiers)"],
+          ["Columns derived by OVITO included", "yes" if meta.get("include_derived") else "no (only dump columns and pipeline outputs)"],
+          ["Force properties used", "fx, fy, fz (OVITO Force.X, Force.Y, Force.Z)" if any((r.get("force") or {}).get("n_valid") is not None for r in rows) else
+           "none: the dump has no complete force vector (" + ", ".join(((rows[0].get("force") or {}).get("missing") or [])) + " missing)"],
+          ["Force averages", "N = particles whose Fx, Fy and Fz are all finite; Mean Fx = sum(Fx_i)/N (likewise y, z); "
+                             "mean |F| = sum(sqrt(Fx_i^2+Fy_i^2+Fz_i^2))/N; |mean F| = sqrt(MeanFx^2+MeanFy^2+MeanFz^2); Sum Fx = sum(Fx_i) over the N particles."],
+          ["Note on forces", "Over all atoms of an isolated system the internal forces cancel (Newton's third law), so the all-atom mean and sum are close to 0; "
+                             "the force on the tool is the sum over the tool's particle type (sheet 'Force by particle type'). Units: those of the dump (LAMMPS metal: eV/Å)."],
+          ["Column statistics", "over the particles whose value is finite (valid count); std is the population standard deviation (ddof = 0)."],
+          ["Statistics exported", ", ".join(label[s] for s in stat_keys)], ["OVITO version", meta.get("ovito")],
+          ["Exported", time.strftime("%Y-%m-%d %H:%M:%S %Z")], ["Columns (origin)", ""]] + [[k, v] for k, v in origins.items()]
+    sheet(meta_ws, ["Item", "Value"], md, widths={1: 34, 2: 110})
+    buf = BytesIO()
+    wb.save(buf)
+    return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
 # ---------------------------------------------------------------------------------------------- uploads
 @router.post("/upload/{sid}/{name}")
 async def upload(sid: str, name: str, request: Request, offset: int = 0):

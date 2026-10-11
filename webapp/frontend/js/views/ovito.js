@@ -11,6 +11,7 @@ import { el, clear, num, bytes, toast, loading, errorState, download, svg, tabs 
 import { AtomRenderer, VIEWS, matrices, V } from "../studio/render.js";
 import { browserSource } from "../studio/source.js";
 import { pickCodec, mp4Writer } from "../studio/movie.js";
+import { buildFramesPanel, exportDefaults } from "./ovito_frames.js";
 
 const KEY = "nanocut.ovito.v2";
 const MODS = [
@@ -49,7 +50,7 @@ const VIEW_TIP = {
 const CHUNK = 8 << 20;                                                 // upload chunk (bytes)
 
 const defaults = () => ({
-  last: null, recent: [], frame: 0, types: {}, cell: true, live: true, fps: 10,
+  last: null, recent: [], frame: 0, types: {}, cell: true, live: true, fps: 10, export: exportDefaults(),
   modifiers: [],
   viewport: { proj: "ortho", view: "Top", preview: false },
   render: { w: 1600, h: 1000, bg: "#ffffff", alpha: false, renderer: "tachyon", aa_gl: 3, aa: 12, ao: true, shadows: false,
@@ -65,7 +66,7 @@ function load(raw) {
   for (const k of ["viewport", "render"]) d[k] = { ...d[k], ...(s[k] || {}) };
   d.render.anim = { ...defaults().render.anim, ...(s.render?.anim || {}) };
   d.overlays = { legend: { ...d.overlays.legend, ...(s.overlays?.legend || {}) }, tripod: { ...d.overlays.tripod, ...(s.overlays?.tripod || {}) }, labels: s.overlays?.labels || [] };
-  for (const k of ["last", "recent", "frame", "types", "cell", "modifiers", "live", "fps"]) if (s[k] !== undefined) d[k] = s[k];
+  for (const k of ["last", "recent", "frame", "types", "cell", "modifiers", "live", "fps", "export"]) if (s[k] !== undefined) d[k] = s[k];
   d.modifiers = (d.modifiers || []).filter(m => MOD_LABEL[m.type]);
   return d;
 }
@@ -485,9 +486,10 @@ export async function render(root) {
   function stop() { playing = false; playBtn.replaceChildren(svg("play")); playBtn.setAttribute("aria-label", "Play"); }
 
   // ---------------------------------------------------------------------------------------------- side panels
-  const T = tabs([{ id: "pipeline", label: "Pipeline" }, { id: "render", label: "Render" }, { id: "results", label: "Results" }, { id: "more", label: "Export · check" }], id => refreshSide(id));
+  const T = tabs([{ id: "pipeline", label: "Pipeline" }, { id: "render", label: "Render" }, { id: "frames", label: "Frames & export" }, { id: "results", label: "Results" }, { id: "more", label: "More" }], id => refreshSide(id));
   side.append(T.bar, ...Object.values(T.panels));
-  const builders = { pipeline: buildPipeline, render: buildRender, results: buildResults, more: buildMore };
+  const builders = { pipeline: buildPipeline, render: buildRender, results: buildResults, more: buildMore,
+    frames: p => buildFramesPanel(p, { S, save, info: () => info, spec: () => spec(fi), frameMeta: () => frame?.meta }) };
   function buildSide() { for (const id of Object.keys(builders)) refreshSide(id, true); }
   function refreshSide(id, force) {
     for (const k of id ? [id] : Object.keys(builders)) { const p = T.panels[k]; if (force || !p.hidden) { clear(p); builders[k](p); } }
