@@ -8,11 +8,13 @@ import { AtomRenderer, VIEWS, matrices, V } from "../studio/render.js";
 import { MODIFIERS, newModifier, evaluate, neededColumns, displacementRef, GRADIENTS, OP_LIST, TYPE_PALETTE, hexToRgb } from "../studio/pipeline.js";
 import { drawOverlays, defaultOverlays, ALIGNS, measureValue, fmtVal } from "../studio/overlays.js";
 import { serverSource, browserSource } from "../studio/source.js";
+import { canEncode, canWriteFolder, pickCodec, mp4Writer, pngFolderWriter } from "../studio/movie.js";
 
 const KEY = "nanocut.studio.v1";
 const defaults = () => ({
   pipeline: [], types: {}, overlays: defaultOverlays(),
-  render: { w: 1600, h: 1000, bg: "#ffffff", transparent: false, ss: 2, preview: true, name: "" },
+  render: { w: 1600, h: 1000, bg: "#ffffff", transparent: false, ss: 2, preview: true, name: "", dt_fs: null,
+    movie: { from: 0, to: null, every: 1, fps: 10, format: "mp4", quality: "high" } },
   viewport: { proj: "ortho", rscale: 1, flat: false, cell: false, view: "Top" },
   analysis: { normal: "y", width: "z", surface: null, thr: 1 },
   measureAxis: "y", recent: [], last: null,
@@ -23,6 +25,7 @@ function loadSession(raw) {
   if (!s) try { s = JSON.parse(localStorage.getItem(KEY) || "null"); } catch { s = null; }
   if (!s || typeof s !== "object") return d;
   for (const k of ["render", "viewport", "analysis"]) d[k] = { ...d[k], ...(s[k] || {}) };
+  d.render.movie = { ...defaults().render.movie, ...(s.render?.movie || {}) };
   d.overlays = { ...d.overlays, ...(s.overlays || {}) };
   d.overlays.legend = { ...defaultOverlays().legend, ...(s.overlays?.legend || {}) };
   d.overlays.tripod = { ...defaultOverlays().tripod, ...(s.overlays?.tripod || {}) };
@@ -249,6 +252,9 @@ export async function render(root) {
   const lum = c => 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2];
   // dimension lines are positions in one trajectory: show only those measured on the open one
   const overlaysHere = () => ({ ...S.overlays, measures: S.overlays.measures.filter(M => src && M.source === src.id) });
+  // values for [Timestep] [Frame] [Time] in text labels; Time needs the MD time step (Render tab)
+  const labelVars = () => frame ? { Timestep: String(frame.meta.step), Frame: String(fi),
+    Time: S.render.dt_fs > 0 ? `${+(frame.meta.step * S.render.dt_fs / 1000).toFixed(3)} ps` : undefined } : {};
   const coloring = () => [...S.pipeline].reverse().find(m => m.enabled && m.type === "color_coding" && frame && m.prop in frame.cols) || null;
 
   // ---------------------------------------------------------------------------------------------- drawing
@@ -273,7 +279,7 @@ export async function render(root) {
       c.strokeStyle = "#e2a23a"; c.lineWidth = 1; c.strokeRect(f.x + 0.5, f.y + 0.5, f.w - 1, f.h - 1);
     }
     const rect = L.frame || L.full, mr = L.frame ? matrices(cam, rect.w / rect.h, scene, 1) : mv;
-    drawOverlays(c, rect, overlaysHere(), mr, coloring());
+    drawOverlays(c, rect, overlaysHere(), mr, coloring(), labelVars());
     const ring = (p, col) => {
       const q = projectPx(mv, p);
       c.strokeStyle = col; c.lineWidth = 2; c.beginPath(); c.arc(q[0], q[1], 9, 0, 7); c.stroke();
@@ -627,6 +633,19 @@ export async function render(root) {
       row("File name", txtIn(r.name, v => { r.name = v; save(); }, { placeholder: defaultName() })),
       el("button", { class: "btn primary", type: "button", onclick: renderImage }, svg("download"), "Render image"),
       el("p", { class: "muted small" }, "The image contains exactly what is inside the preview frame, at the size above, with the overlays. Sizes of text and legends are relative to the image height.")));
+    const M = r.movie, last = src ? src.n_frames - 1 : 0, cc = coloring();
+    p.append(sec("Movie",
+      row("Frames from / to", el("div", { class: "duo" }, numIn(M.from, v => { M.from = v == null ? 0 : Math.max(0, Math.round(v)); save(); }, { min: 0, max: last, step: 1 }),
+        numIn(M.to, v => { M.to = v == null ? null : Math.max(0, Math.round(v)); save(); }, { min: 0, max: last, step: 1, placeholder: `${last} (last)` }))),
+      row("Every n-th frame", numIn(M.every, v => { M.every = Math.max(1, Math.round(v || 1)); save(); }, { min: 1, step: 1 })),
+      row("Frames per second", numIn(M.fps, v => { M.fps = Math.max(1, Math.min(120, v || 10)); save(); }, { min: 1, max: 120, step: 1 })),
+      row("Format", sel([["mp4", "MP4 video (H.264)"], ["png", "PNG sequence into a folder (lossless)"]], M.format, v => { M.format = v; save(); refreshSide("render"); }, "Movie format")),
+      M.format === "mp4" ? row("Quality", sel([["standard", "Standard"], ["high", "High"], ["max", "Maximum"]], M.quality, v => { M.quality = v; save(); }, "Video quality")) : null,
+      row("MD time step (fs)", numIn(r.dt_fs, v => { r.dt_fs = v > 0 ? v : null; save(); requestDraw(); }, { min: 0, step: "any", placeholder: "for [Time] in labels" })),
+      M.format === "mp4" && !canEncode() ? el("div", { class: "banner warn" }, "This browser has no video encoder (WebCodecs). Use Chrome, Edge or Firefox, or the PNG sequence.") : null,
+      M.format === "png" && !canWriteFolder() ? el("div", { class: "banner warn" }, "Saving into a folder needs Chrome or Edge.") : null,
+      el("button", { class: "btn primary", type: "button", onclick: renderMovie, disabled: !src }, svg("play"), "Render movie"),
+      el("p", { class: "muted small" }, `Each frame is rendered like Render image (size, background, antialiasing, overlays) and shown for exactly 1/fps s. Text labels can show [Timestep], [Frame] and [Time]. ${cc ? `The colour range stays fixed at ${num(cc.start, 4)} … ${num(cc.end, 4)} for every frame. ` : ""}MP4 sizes are rounded up to even numbers.`)));
     const file = el("input", { type: "file", accept: ".json,application/json", hidden: true, onchange: async e => {
       const f = e.target.files[0]; if (!f) return;
       try { Object.assign(S, loadSession(JSON.parse(await f.text()))); save(); refreshSide(); buildToolsAgain(); await changed(); toast("Session loaded.", "ok"); }
@@ -642,25 +661,91 @@ export async function render(root) {
   function buildToolsAgain() { clear(tools); buildTools(); if (cam) cam.proj = S.viewport.proj; }
   const defaultName = () => src ? `${src.pattern.replace(/\*.*$/, "").replace(/[^\w.-]+/g, "_").replace(/[._]+$/, "")}_step${frame ? frame.meta.step : 0}.png` : "nanocut.png";
 
-  async function renderImage() {
-    if (!frame || !cam) { toast("Open a trajectory first.", "warn"); return; }
-    const { w, h } = S.render, ss = Math.max(1, Math.min(3, S.render.ss | 0));
+  /** The current frame as the exported image: w x h, supersampled, with overlays. Returns {canvas, big} or throws. */
+  function compose(w, h, transparent, cv) {
+    const ss = Math.max(1, Math.min(3, S.render.ss | 0));
     let k = ss;
     while (k > 1 && (w * k > R.maxImage || h * k > R.maxImage)) k--;
-    if (w * k > R.maxImage || h * k > R.maxImage) { toast(`Image too large for this GPU (max ${R.maxImage} px per side).`, "err"); return; }
+    if (w * k > R.maxImage || h * k > R.maxImage) throw new Error(`image too large for this GPU (max ${R.maxImage} px per side)`);
     const m = matrices(cam, w / h, scene, 1);
-    const big = Math.max(...Object.values(S.types).map(t => +t.radius || 1)) * S.viewport.rscale * h * k * m.proj[5];
+    const big = Math.max(...Object.values(S.types).map(t => +t.radius || 1)) * S.viewport.rscale * h * k * m.proj[5] > R.maxPoint;
+    const bg = transparent ? [0, 0, 0, 0] : [...bgRgb(), 1];
+    const img = R.renderImage(w * k, h * k, { view: m.view, proj: m.proj, bg, rscale: S.viewport.rscale, flat: S.viewport.flat, cellColor: S.viewport.cell ? (lum(bgRgb()) > 0.5 ? [0.1, 0.1, 0.1] : [0.6, 0.62, 0.66]) : null });
+    cv = cv || el("canvas", { width: w, height: h });
+    const c = cv.getContext("2d");
+    c.clearRect(0, 0, w, h);
+    c.imageSmoothingEnabled = true; c.imageSmoothingQuality = "high";
+    c.drawImage(img, 0, 0, w, h);
+    drawOverlays(c, { x: 0, y: 0, w, h }, overlaysHere(), m, coloring(), labelVars());
+    return { canvas: cv, big };
+  }
+  async function renderImage() {
+    if (!frame || !cam) { toast("Open a trajectory first.", "warn"); return; }
+    const { w, h } = S.render;
     try {
-      const bg = S.render.transparent ? [0, 0, 0, 0] : [...bgRgb(), 1];
-      const img = R.renderImage(w * k, h * k, { view: m.view, proj: m.proj, bg, rscale: S.viewport.rscale, flat: S.viewport.flat, cellColor: S.viewport.cell ? (lum(bgRgb()) > 0.5 ? [0.1, 0.1, 0.1] : [0.6, 0.62, 0.66]) : null });
-      const cv = el("canvas", { width: w, height: h }), c = cv.getContext("2d");
-      c.imageSmoothingEnabled = true; c.imageSmoothingQuality = "high";
-      c.drawImage(img, 0, 0, w, h);
-      drawOverlays(c, { x: 0, y: 0, w, h }, overlaysHere(), m, coloring());
+      const { canvas, big } = compose(w, h, S.render.transparent);
       requestDraw();
-      const blob = await new Promise(r => cv.toBlob(r, "image/png"));
-      showImage(blob, S.render.name || defaultName(), w, h, big > R.maxPoint ? `Atoms larger than ${R.maxPoint} px are drawn at that size by this GPU; zoom out or lower the image size.` : null);
+      const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
+      showImage(blob, S.render.name || defaultName(), w, h, big ? `Atoms larger than ${R.maxPoint} px are drawn at that size by this GPU; zoom out or lower the image size.` : null);
     } catch (e) { toast(`Render failed: ${e.message}`, "err"); requestDraw(); }
+  }
+  let movieCancel = false;
+  async function renderMovie() {
+    if (!frame || !cam) { toast("Open a trajectory first.", "warn"); return; }
+    const M = S.render.movie, n = src.n_frames, clampF = v => Math.max(0, Math.min(n - 1, v));
+    const a = clampF(M.from ?? 0), b = clampF(M.to ?? n - 1), every = Math.max(1, M.every | 0), fps = Math.max(1, Math.min(120, +M.fps || 10));
+    if (b < a) { toast("The last frame is before the first.", "warn"); return; }
+    const list = [];
+    for (let i = a; i <= b; i += every) list.push(i);
+    let w = S.render.w, h = S.render.h, writer, what;
+    const prefix = src.pattern.replace(/\*.*$/, "").replace(/[^\w.-]+/g, "_").replace(/[._]+$/, "") || "frame";
+    stop();
+    if (M.format === "png") {
+      if (!canWriteFolder()) { toast("Saving a PNG sequence needs Chrome or Edge (folder access).", "err"); return; }
+      try { writer = await pngFolderWriter(prefix); } catch (e) { if (e.name !== "AbortError") toast(e.message, "err"); return; }
+      what = `PNG frames into “${writer.folder}”`;
+    } else {
+      w += w % 2; h += h % 2;
+      const bpp = { standard: 0.08, high: 0.15, max: 0.3 }[M.quality] ?? 0.15;
+      const codec = await pickCodec(w, h, fps, Math.round(Math.min(80e6, Math.max(1e6, w * h * fps * bpp))));
+      if (!codec) { toast("This browser cannot encode video at this size. Try a smaller image or the PNG sequence.", "err"); return; }
+      writer = mp4Writer(codec, fps);
+      what = `${codec.label} MP4, ${w} × ${h}, ${fps} fps`;
+    }
+    movieCancel = false;
+    const bar = el("i", {}), msg = el("span", { class: "muted" }, "Starting…");
+    const dlg = el("div", { class: "modal-backdrop open", role: "dialog", "aria-modal": "true", "aria-label": "Rendering movie" },
+      el("div", { class: "modal" }, el("div", { class: "panel-head" }, el("h3", {}, "Rendering movie"), el("span", { class: "sub" }, `${list.length} frames · ${what}`)),
+        el("div", { class: "panel-body grid1" }, el("div", { class: "progress", style: { width: "100%" } }, bar), msg,
+          el("div", { class: "field-row" }, el("button", { class: "btn", type: "button", onclick: () => { movieCancel = true; msg.textContent = "Stopping…"; } }, "Cancel")))));
+    document.body.append(dlg);
+    const home = fi, cv = el("canvas", { width: w, height: h }), t0 = performance.now();
+    try {
+      for (let k = 0; k < list.length; k++) {
+        if (movieCancel || !alive) throw new Error("cancelled");
+        await loadFrame(list[k]);
+        if (fi !== list[k] || !frame) throw new Error(`frame ${list[k]} could not be loaded`);
+        compose(w, h, M.format === "png" && S.render.transparent, cv);
+        await writer.add(cv, String(list[k]).padStart(String(n - 1).length, "0"));
+        bar.style.width = `${(100 * (k + 1)) / list.length}%`;
+        const eta = (performance.now() - t0) / (k + 1) * (list.length - k - 1) / 1000;
+        msg.textContent = `Frame ${list[k]} · ${k + 1} of ${list.length}${k + 1 < list.length ? ` · about ${eta < 90 ? `${Math.ceil(eta)} s` : `${Math.ceil(eta / 60)} min`} left` : ""}`;
+      }
+      if (M.format === "png") toast(`${list.length} PNG frames saved to “${writer.folder}”.`, "ok");
+      else {
+        msg.textContent = "Finishing the MP4 file…";
+        const blob = await writer.finish(), name = `${prefix}_${list[0]}-${list.at(-1)}.mp4`;
+        download(name, blob, "video/mp4");
+        toast(`${name} · ${bytes(blob.size)} · ${(list.length / fps).toFixed(1)} s`, "ok");
+      }
+    } catch (e) {
+      writer.abort?.();
+      e.message === "cancelled" ? toast("Movie cancelled.", "warn") : toast(`Movie stopped: ${e.message}`, "err");
+    } finally {
+      dlg.remove();
+      if (alive && fi !== home) await loadFrame(home);
+      requestDraw();
+    }
   }
   function showImage(blob, name, w, h, warn) {
     const url = URL.createObjectURL(blob);

@@ -86,13 +86,14 @@ function tripod(c, rect, T, m) {
   }
 }
 
-function text(c, rect, T) {
+function text(c, rect, T, vars) {
   const H = rect.h, fpx = T.size * H;
+  const str = T.text.replace(/\[(\w+)\]/g, (m, k) => vars?.[k] ?? m);     // [Timestep], [Frame], [Time] as in OVITO
   c.font = fontOf(fpx, T.serif, T.bold);
-  const w = c.measureText(T.text).width;
+  const w = c.measureText(str).width;
   const [x, y] = place(T.align, rect, w, fpx, T.ox, T.oy);
   c.fillStyle = T.color; c.textAlign = "left"; c.textBaseline = "middle";
-  c.fillText(T.text, x, y + fpx / 2);
+  c.fillText(str, x, y + fpx / 2);
 }
 
 export const measureValue = M => M.axis === "xyz" ? V.len(V.sub(M.b, M.a)) : Math.abs(M.b["xyz".indexOf(M.axis)] - M.a["xyz".indexOf(M.axis)]);
@@ -128,13 +129,14 @@ function measure(c, rect, M, m) {
   else { c.textAlign = "center"; c.fillText(label, mx, my - side * off); }
 }
 
-/** Draw all overlays into rect. m: matrices for that rect; coloring: the color_coding modifier for the legend (or null). */
-export function drawOverlays(c, rect, ov, m, coloring) {
+/** Draw all overlays into rect. m: matrices for that rect; coloring: the color_coding modifier for the legend (or null);
+ *  vars: values for [Name] placeholders in text labels. */
+export function drawOverlays(c, rect, ov, m, coloring, vars) {
   c.save();
   c.beginPath(); c.rect(rect.x, rect.y, rect.w, rect.h); c.clip();
   for (const M of ov.measures) if (M.visible !== false) measure(c, rect, M, m);
   if (ov.legend.enabled && coloring) legend(c, rect, ov.legend, coloring);
   if (ov.tripod.enabled) tripod(c, rect, ov.tripod, m);
-  for (const T of ov.labels) if (T.text) text(c, rect, T);
+  for (const T of ov.labels) if (T.text) text(c, rect, T, vars);
   c.restore();
 }
