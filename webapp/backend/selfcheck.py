@@ -27,7 +27,8 @@ def wait(url, method="get", timeout=300, **kw):
         r = getattr(c, method)(url, **kw)
         method = "get" if method == "post" and r.status_code == 202 and "/jobs/" not in url else method
         if r.status_code != 202:
-            return r
+            body = r.json() if "json" in r.headers.get("content-type", "") else None
+            return body if isinstance(body, dict) and "id" in body and "status" in body else r   # job finished inline
         jid = r.json()["id"]
         while time.time() - t0 < timeout:
             j = c.get(f"/api/jobs/{jid}").json()

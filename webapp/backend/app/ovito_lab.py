@@ -102,6 +102,10 @@ def _source(body):
 @router.get("/status")
 def status():
     """Starts the OVITO worker if needed and reports the OVITO version (the first call takes a few seconds)."""
+    if os.environ.get("VERCEL"):
+        return dict(available=False, hosted=True, error="OVITO (about 400 MB with its Qt libraries) does not fit a Vercel "
+                    "function; this page works when the backend runs on a computer with OVITO installed.",
+                    install=r".venv\Scripts\python -m pip install ovito")
     try:
         info = worker.ask({"op": "hello"}, 120)
         return dict(available=True, ovito=info["ovito"], python=sys.version.split()[0])

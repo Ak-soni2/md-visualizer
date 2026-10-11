@@ -1,4 +1,5 @@
 """Minimal in-process background jobs (thread pool, de-duplicated by key). No queue/database needed at this scale."""
+import os
 import threading
 import time
 import traceback
@@ -6,6 +7,9 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 _pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="nanocut-job")
+# Serverless (Vercel): memory is not shared between invocations, so a job polled later may land on another instance.
+# There every job runs inside the request that starts it and the response carries the result (status "done").
+INLINE = bool(os.environ.get("VERCEL") or os.environ.get("NANOCUT_INLINE_JOBS"))
 _lock = threading.Lock()
 _jobs = {}          # id -> record
 _by_key = {}        # key -> id (latest)
@@ -40,7 +44,10 @@ def submit(key, label, fn, *args, **kwargs):
             rec["trace"] = traceback.format_exc(limit=4)
         rec["finished"] = time.time()
 
-    _pool.submit(run)
+    if INLINE:
+        run()
+    else:
+        _pool.submit(run)
     return rec
 
 

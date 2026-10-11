@@ -567,10 +567,9 @@ app.include_router(ovito_lab.router)
 
 
 # ---------------------------------------------------------------------------------------------------- frontend
-if FRONTEND_DIR.exists():
+if FRONTEND_DIR.exists():                     # on Vercel the frontend is served from public/ instead
     app.mount("/app", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 
-
-@app.get("/")
-def root():
-    return RedirectResponse("/app/")
+    @app.get("/")
+    def root():
+        return RedirectResponse("/app/")
