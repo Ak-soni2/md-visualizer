@@ -28,7 +28,7 @@ Checks (all against real or synthetic data with known answers):
 |---|---|---|
 | OVITO page, local: **Open folder… / Open file(s)… / Browse… / Open path** | where they are on your disk (the local backend shows the system dialog and uses the real path) | none |
 | Studio page: **Open folder… / Open files…** | read by the browser directly from your disk | none |
-| OVITO page, **HPC…** | stay on the cluster; each frame is fetched when OVITO computes it | at most 4 frames + frame 0 in `%TEMP%\nanocut_ovito\remote` (`NANOCUT_REMOTE_CACHE`), deleted on disconnect |
+| OVITO page, **HPC…** | stay on the cluster; each frame is streamed over SSH into memory when OVITO computes it (`backend/memdump.py`) | none on disk (one frame in RAM at a time) |
 | Hosted site: **Upload files…** | private Vercel Blob store of the project | in the cloud, deleted after 24 h; nothing on your PC |
 
 Results: images/exports go to `%TEMP%\nanocut_ovito` (latest 60 kept). The frame-export ZIP is written directly to the
@@ -172,8 +172,10 @@ than the crack opening. These are indicators, not proof: confirm brittle frames 
 Host/IP, port, username and password (keyboard-interactive and one-time codes supported) or a private key. The
 credentials are used once to open the SSH connection and are never stored or logged; unknown host keys must be
 confirmed by fingerprint (kept in `~/.nanocut/known_hosts`), changed keys are refused. Browse the cluster, open a dump
-sequence: frames are fetched over SFTP only when computed (see the storage table); results are identical to reading the
-same files locally (`tools/check_remote.py`).
+sequence: each frame is streamed over SFTP into memory when OVITO computes it and built into OVITO data there
+(`backend/memdump.py`, identical to OVITO's reader); nothing is written to disk. Results are identical to reading the
+same files locally and no file is created (`tools/check_remote.py`). The OVITO-vs-NanoCut cross-check (it reads files)
+is not available for HPC trajectories.
 
 ## Architecture
 
