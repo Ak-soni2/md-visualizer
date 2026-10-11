@@ -1,12 +1,13 @@
 {
  "meta": {
-  "generated": "2026-10-11 03:17",
+  "generated": "2026-10-11 15:54",
   "simulation": "example-sample-run",
   "note": "Snapshot of real API responses for the offline demo. Read-only; only the sample run is included."
  },
  "routes": {
   "/api/simulations": "simulations.json",
   "/api/tree?depth=2": "tree.json",
+  "/api/tree?path=C%3A%2FBTP%2FCutting&depth=1": "tree_reference.json",
   "/api/simulations/example-sample-run": "overview.json",
   "/api/simulations/example-sample-run/parameters": "parameters.json",
   "/api/simulations/example-sample-run/trajectory": "trajectory.json",

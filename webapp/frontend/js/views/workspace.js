@@ -36,10 +36,13 @@ export async function render(root, { navigate }) {
       if (state.sims.some(s => s.kind === "reference")) {
         const ref = state.sims.find(s => s.kind === "reference");
         const refRoot = ref.path.split("/").slice(0, -1).join("/");
-        const rt = await api.get(`/api/tree?path=${enc(refRoot)}&depth=1`);
-        const ul2 = el("ul", { class: "tree", role: "tree", "aria-label": "Reference decks", style: { marginTop: "10px" } });
-        ul2.append(treeNode(rt, 0, false, refRoot));
-        treeBody.append(el("h4", { style: { margin: "14px 0 4px" } }, "Reference decks (external, read-only)"), ul2);
+        treeBody.append(el("h4", { style: { margin: "14px 0 4px" } }, "Reference decks (external, read-only)"));
+        try {
+          const rt = await api.get(`/api/tree?path=${enc(refRoot)}&depth=1`);
+          const ul2 = el("ul", { class: "tree", role: "tree", "aria-label": "Reference decks", style: { marginTop: "10px" } });
+          ul2.append(treeNode(rt, 0, false, refRoot));
+          treeBody.append(ul2);
+        } catch (e) { treeBody.append(el("p", { class: "muted" }, `Reference folder not listed: ${e.message}`)); }   // the project tree above stays usable
       }
     } catch (e) { clear(treeBody).append(errorState(e, loadTree)); }
   }

@@ -209,3 +209,20 @@ table.data.compact .input { width: 76px; }
   .st-hud { font-size: var(--fs-xs); padding: 4px 7px; }
   .st-hud b { display: none; }
 }
+
+/* OVITO page (official OVITO Python module) */
+.ov-bar { margin-bottom: var(--s-3); }
+.ov-bar .panel-body { padding: var(--s-2) var(--s-3); }
+.ov-bar > .panel-body > svg { width: 16px; height: 16px; stroke: var(--text-2); }
+.ov-bar .path { flex: 1 1 360px; font-family: var(--font-mono); min-width: 0; }
+.ov-bar select { max-width: 100%; }
+.ov-grid { display: grid; grid-template-columns: minmax(320px, 400px) minmax(0, 1fr); gap: var(--s-3); align-items: start; }
+.ov-left { position: sticky; top: 0; max-height: calc(100vh - 120px); overflow: auto; }
+.ov-left .tabs { position: sticky; top: calc(-1 * var(--s-3)); background: var(--bg-1); z-index: 2; }
+.ov-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-top: var(--s-3); border-top: 1px solid var(--line); margin-top: var(--s-2); position: sticky; bottom: calc(-1 * var(--s-3)); background: var(--bg-1); padding-bottom: var(--s-2); }
+.ov-right { display: grid; gap: var(--s-3); min-width: 0; }
+.ov-img { background: repeating-conic-gradient(#2a2f36 0 25%, #1d2126 0 50%) 0 0 / 16px 16px; }
+.ov-img img { max-width: 100%; display: block; margin: 0 auto; }
+.ov-table { max-height: 420px; }
+.ov-right .mod-status, .ov-left .mod-status { color: var(--text-2); font-family: var(--font-sans); }
+@media (max-width: 1000px) { .ov-grid { grid-template-columns: 1fr; } .ov-left { position: static; max-height: none; } }

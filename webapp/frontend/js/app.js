@@ -13,6 +13,7 @@ export const VIEWS = [
   { id: "decks", label: "Decks", load: () => import("./views/decks.js") },
   { id: "validation", label: "Validation", load: () => import("./views/validation.js") },
   { id: "studio", label: "Studio", load: () => import("./views/studio.js"), full: true },
+  { id: "ovito", label: "OVITO", load: () => import("./views/ovito.js") },
 ];
 
 let current = { view: null, cleanup: null, token: 0 };
@@ -115,7 +116,7 @@ function shortcuts() {
   document.addEventListener("keydown", e => {
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName);
     if (e.key === "Escape") { closeSource(); $("#help-modal").classList.remove("open"); return; }
-    if (e.altKey && /^[1-8]$/.test(e.key)) { e.preventDefault(); navigate(VIEWS[+e.key - 1].id); return; }
+    if (e.altKey && /^[1-9]$/.test(e.key)) { e.preventDefault(); navigate(VIEWS[+e.key - 1].id); return; }
     if (typing) return;
     if (e.key === "?") { $("#help-modal").classList.add("open"); $("#help-close").focus(); }
     if (e.key === "/") { const s = document.querySelector("#view [data-search]"); if (s) { e.preventDefault(); s.focus(); } }

@@ -1,5 +1,25 @@
 # Changes
 
+## OVITO page (2026-10-11)
+
+New page "OVITO" (Alt+9). It uses the official OVITO Python module for reading, analysis and rendering. The Visualizer
+and Studio are unchanged; git shows no diff in their files.
+
+- Installed `ovito 3.16.0` into the project `.venv`. It added only PySide6-Essentials 6.10.3, shiboken6 6.10.3 and
+  traits 7.2.0, and changed no existing package.
+- Created:
+  - `backend/app/ovito_script.py`: settings to OVITO Python script, with every value validated and passed as a literal.
+  - `backend/ovito_worker.py`: the long-lived OVITO process.
+  - `backend/app/ovito_lab.py`: `/api/ovito/*` routes, background jobs and a temporary output folder.
+  - `frontend/js/views/ovito.js`: the page.
+- Modified:
+  - `backend/app/main.py`: two lines that register the router.
+  - `frontend/js/app.js`, `frontend/js/ui.js`, `frontend/index.html`, `frontend/css/views.css`: navigation entry, icon,
+    shortcut and styles.
+  - `backend/requirements.txt`, `backend/selfcheck.py` (6 OVITO checks; 47/47 pass), `README.md`.
+- Verified: OVITO agrees with NanoCut's parser on the sample run and on the 2-million-atom production frame (see
+  README, OVITO page).
+
 ## Deck file names (2026-10-11)
 
 The Decks page now downloads `<experiment name>_A.txt` and `<experiment name>_B.txt` instead of `A.in` and `B.in`.

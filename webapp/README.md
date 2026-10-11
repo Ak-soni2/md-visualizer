@@ -13,7 +13,7 @@ then open http://127.0.0.1:8600 (interactive API docs at http://127.0.0.1:8600/d
 It uses the project's `.venv`; FastAPI and uvicorn are installed into it on first start if missing
 (`webapp/backend/requirements.txt`).
 
-Self-check of the API against the real project data (41 checks):
+Self-check of the API against the real project data (47 checks):
 ```bat
 .venv\Scripts\python webapp\backend\selfcheck.py
 ```
@@ -30,6 +30,7 @@ Self-check of the API against the real project data (41 checks):
 | **Decks** | Every NanoCut parameter (same set, choices and help as the Streamlit setup tab: material, a0, sizes, layers, boundaries x/y/z, crystal orientations, potential and tool-workpiece cross term (Morse/ZBL/LJ), tool shape and angles, laser, thermostats, time steps, output, MPI); start from a run, preset or params.json; live validation; generate and download A/B and params.json; nothing is written on the server | `nanocut.schema`, `nanocut.deck` |
 | **Validation** | Parsing vs scientific validation per simulation, archived verification (potential files, decks vs reference), last inspection time, re-run | files + `reference/*_checks.json` |
 | **Studio** | A small OVITO-style workstation for any LAMMPS dump (details below) | any dump folder or file you open |
+| **OVITO** | Analysis and images made by the official OVITO Python module (details below) | any dump folder or file, read by OVITO |
 
 Keyboard: `Alt+1…8` views, `?` help, `/` search, `Esc` close; visualizer `Space` play, `,`/`.` frames, arrows/`+`/`-`/`0` in the viewport.
 
@@ -70,6 +71,35 @@ Speed (this PC, dumps on the external disk): opening a 600-file folder under 10 
 ~13–22 s (disk-bound, in a background job; the server keeps the last 3 frames, `NANOCUT_STUDIO_CACHE`); re-evaluating
 the pipeline 0.15 s; a 1600 × 1000 image with 2× supersampling 0.4 s. A 97,815-atom run plays at under 1 s per frame.
 
+## OVITO page (official OVITO Python module)
+
+Everything on this page is computed and rendered by OVITO itself (`pip install ovito`, version 3.16.0 in the project
+`.venv`), not by NanoCut code:
+
+- The page settings become an **OVITO Python script** (`backend/app/ovito_script.py`). One long-lived OVITO worker
+  process (`backend/ovito_worker.py`) runs exactly that script, keeping the loaded frame cached between renders.
+  *Show script* displays it, and the result's Script tab offers it as a `.py` download. Running it with OVITO reproduces
+  the image and numbers. User values enter the script only as Python literals; OVITO expressions stay strings that OVITO
+  evaluates.
+- **Modifiers** (OVITO's own): Select type, Expression selection (OVITO expression syntax), Invert/Clear selection,
+  Delete selected, Slice, Displacement vectors, Coordination analysis, Identify diamond structure (3C-SiC), Common
+  neighbor analysis, Dislocation analysis (DXA), Compute property, Color coding (OVITO gradients), Assign color.
+- **Rendering:** OVITO Viewport (Top/Bottom/Front/Back/Left/Right/Ortho/Perspective, zoom), OpenGL renderer or Tachyon
+  ray tracer (antialiasing, ambient occlusion, shadows), OVITO's ColorLegendOverlay, CoordinateTripodOverlay and
+  TextLabelOverlay (text such as `[Timestep]` or `[ExpressionSelection.count]` is filled in by OVITO).
+- **Results:** OVITO's rendered PNG, all OVITO global attributes (e.g. `ExpressionSelection.count`,
+  `IdentifyDiamond.counts.*`, `ColorCoding.RangeMin/Max`), min/max/mean of every particle property, and data export with
+  OVITO's exporter (LAMMPS dump, XYZ, LAMMPS data, POSCAR).
+- **Cross-check:** for any frame and reference frame it compares OVITO with NanoCut's own dump reader (the Studio). On the
+  20-30 run, frame 599 (1,995,185 atoms), the atom ids are identical, positions agree within 3e-5 Å and displacements
+  within 9e-5 Å (float32 rounding). OVITO's selection of the 2,390 atoms above the surface and its dy range
+  −22.711 … 32.751 Å match the Studio's numbers exactly.
+
+Speed on this PC (2-million-atom frame from the external disk, with displacements): 29 s for an OpenGL image including
+loading two frames; 64 s for a 1600 × 1000 Tachyon image with ambient occlusion; renders of the sample run take 1–3 s.
+Images and exports go to the system temporary folder (`%TEMP%\nanocut_ovito`, latest 60 kept), never into the project or
+data folders. If `ovito` is missing, the page shows the install command.
+
 ## Architecture
 
 ```
@@ -85,7 +115,7 @@ webapp/
     advice.py      physics advice rules (same as ui/app.py soft_warnings)
     jobs.py        small thread-pool job runner with progress (no queue/database)
     studio.py      Studio: dump discovery, frame index, frame parsing into a small LRU cache, displacements, binary columns
-  backend/selfcheck.py   41 end-to-end checks with FastAPI's TestClient
+  backend/selfcheck.py   47 end-to-end checks with FastAPI's TestClient
   frontend/
     index.html, css/ (tokens, base, components, views)
     js/ app.js (shell, routing), api.js (client + job polling + offline fixtures), viewer.js (atom renderer),
@@ -117,6 +147,10 @@ webapp/
 | `GET /api/deck-options` | materials, potentials, Morse cross terms and defaults for the deck editor |
 | `POST /api/decks/check` | `{experiment}` → hard errors and step counts (instant) |
 | `POST /api/decks` | `{experiment}` (full set) or `{base, overrides}` → decks A/B as text (job); nothing written |
+| `/api/ovito/status` | OVITO version (starts the OVITO worker) |
+| `POST /api/ovito/info`, `/render`, `/export`, `/verify` | OVITO reads a trajectory; renders with the page settings; exports data; cross-checks with NanoCut's parser (jobs) |
+| `POST /api/ovito/script` | the OVITO Python script for the current settings |
+| `/api/ovito/file/{name}` | rendered PNG or exported file |
 | `/api/studio/scan?path=` | dump sequences in a folder (two levels deep) or the given dump file; names and sizes only |
 | `POST /api/studio/open` | `{path, pattern?, refresh?}` → frame index of a sequence or file (job) |
 | `POST /api/studio/sources/{id}/frames/{i}/load?ref=` | parse a frame (and the displacement reference) into the cache (job) |
@@ -153,5 +187,5 @@ webapp/
 - Studio: no CNA/DXA/cluster analysis, no bonds, no ambient-occlusion renderer, no movie export (render frame by frame);
   gzip dumps are read as one frame per file; values are float32 (≈1e-4 Å at 1000 Å). It covers the OVITO features
   used for burr, pile-up and displacement figures.
-- Self-check: 41 checks (27 + 4 for the full deck editor + 10 for the Studio).
+- Self-check: 47 checks (27 + 4 deck editor + 10 Studio + 6 OVITO).
 - Authentication is not implemented; bind to 127.0.0.1 (default) unless deployed behind access control.

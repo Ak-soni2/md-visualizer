@@ -41,6 +41,11 @@ def job(route, method="get"):
 os.makedirs(OUT, exist_ok=True)
 save("/api/simulations", "simulations.json", c.get("/api/simulations").json())
 save("/api/tree?depth=2", "tree.json", c.get("/api/tree?depth=2").json())
+_refs = [s for s in c.get("/api/simulations").json()["simulations"] if s["kind"] == "reference"]
+if _refs:                                                 # same route string as workspace.js builds (encodeURIComponent)
+    from urllib.parse import quote
+    _root = "/".join(_refs[0]["path"].split("/")[:-1])
+    save(f"/api/tree?path={quote(_root, safe='')}&depth=1", "tree_reference.json", c.get("/api/tree", params={"path": _root, "depth": 1}).json())
 save(f"/api/simulations/{SIM}", "overview.json", c.get(f"/api/simulations/{SIM}").json())
 save(f"/api/simulations/{SIM}/parameters", "parameters.json", c.get(f"/api/simulations/{SIM}/parameters").json())
 tr = c.get(f"/api/simulations/{SIM}/trajectory").json()

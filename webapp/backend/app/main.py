@@ -561,6 +561,11 @@ def studio_atom(sid: str, index: int, i: int, ref: int = None):
         raise _studio_err(e)
 
 
+# ---------------------------------------------------------------------------------------------------- OVITO page
+from . import ovito_lab  # noqa: E402  (official OVITO Python module, separate worker process)
+app.include_router(ovito_lab.router)
+
+
 # ---------------------------------------------------------------------------------------------------- frontend
 if FRONTEND_DIR.exists():
     app.mount("/app", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

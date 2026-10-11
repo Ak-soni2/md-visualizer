@@ -181,5 +181,27 @@ try:
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 
+# ---------------------------------------------------------------- OVITO page (official OVITO Python module)
+ost = c.get("/api/ovito/status").json()
+check("OVITO module available", ost.get("available") is True, ost.get("ovito") or ost.get("error", ""))
+if ost.get("available"):
+    osrc = {"path": "examples/sample_run", "pattern": "cut_SiC_R10_d10_preview_cut.*.lammpstrj"}
+    ospec = {"source": osrc, "frame": 2, "modifiers": [{"type": "select_type", "types": [1]}, {"type": "delete_selected"},
+             {"type": "displacements", "reference_frame": 0}, {"type": "expression_selection", "expression": "Position.Y > 179.089"},
+             {"type": "color_coding", "property": "Displacement.Y", "gradient": "Rainbow"}],
+             "view": {"type": "Top"}, "render": {"w": 320, "h": 200}, "overlays": {"legend": {"enabled": True}}}
+    orr = job_result(wait("/api/ovito/render", "post", json={"spec": ospec}))
+    oa = orr.get("attributes", {})
+    check("OVITO render: image and attributes", orr.get("bytes", 0) > 1000 and c.get(f"/api/ovito/file/{orr.get('image')}").status_code == 200
+          and oa.get("SelectType.num_selected") == 43363, str({k: oa.get(k) for k in ("Timestep", "SelectType.num_selected")}))
+    check("OVITO agrees with NanoCut: dy range and burr count", abs(oa.get("ColorCoding.RangeMin", 0) + 2.905) < 1e-3 and abs(oa.get("ColorCoding.RangeMax", 0) - 0.643) < 1e-3
+          and oa.get("ExpressionSelection.count") == 1, str({k: oa.get(k) for k in ("ColorCoding.RangeMin", "ColorCoding.RangeMax", "ExpressionSelection.count")}))
+    ov = job_result(wait("/api/ovito/verify", "post", json=dict(osrc, frame=2, reference=0)))
+    check("OVITO vs NanoCut parser: ids, positions, displacements", ov.get("same_atom_ids") and max(ov.get(f"max_diff_{k}_A", 1) for k in ("dx", "dy", "dz")) < 1e-3
+          and max(ov.get(f"max_diff_position_{k}_A", 1) for k in "xyz") < 1e-3, f"max |d disp| {max(ov.get(f'max_diff_{k}_A', 1) for k in ('dx', 'dy', 'dz')):.1e} Å")
+    check("OVITO script: user text stays a string literal", "expression=\"'); import os #\"" in c.post("/api/ovito/script", json={"spec": dict(ospec, modifiers=[
+          {"type": "expression_selection", "expression": "'); import os #"}])}).json()["script"])
+    check("OVITO file endpoint refuses other paths", c.get("/api/ovito/file/..%2F..%2Fsettings.py").status_code == 404)
+
 print("\n" + ("ALL CHECKS PASSED" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)
