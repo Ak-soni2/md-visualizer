@@ -565,8 +565,9 @@ def studio_atom(sid: str, index: int, i: int, ref: int = None):
 
 
 # ---------------------------------------------------------------------------------------------------- OVITO page
-from . import ovito_lab  # noqa: E402  (official OVITO Python module, separate worker process)
+from . import ovito_lab, remote  # noqa: E402  (official OVITO Python module, separate worker process; HPC over SSH)
 app.include_router(ovito_lab.router)
+app.include_router(remote.router)
 
 
 # ---------------------------------------------------------------------------------------------------- frontend

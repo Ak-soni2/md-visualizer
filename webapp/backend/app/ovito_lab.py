@@ -21,7 +21,7 @@ import numpy as np
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 
-from . import jobs, ovito_script, studio
+from . import jobs, ovito_script, remote, studio
 
 router = APIRouter(prefix="/api/ovito", tags=["ovito"])
 WORKER = Path(__file__).resolve().parents[1] / "ovito_worker.py"
@@ -88,6 +88,11 @@ def _prune():
 
 def _source(body):
     """{path, pattern?} or {upload, pattern} -> OVITO import path (wildcard sequence or one file scanned for all its frames)."""
+    if body.get("remote"):                       # files on an HPC cluster, fetched frame by frame (remote.py)
+        rs, folder, _ = remote.mirror(body)
+        pat = str(body["pattern"])
+        return dict(import_path=str(folder / pat), multiple_frames="*" not in pat, label=remote.label(body),
+                    remote=rs["id"], dir=str(body["dir"]), pattern=pat)
     if body.get("upload"):                       # files uploaded from the browser (this server's temporary folder)
         sid = str(body["upload"])
         if not re.fullmatch(r"[0-9a-f]{16}", sid) or not (UPLOAD_DIR / sid).is_dir():
@@ -129,7 +134,20 @@ def info(body: dict = Body(...)):
     src = _source(body)
     frame = int(body.get("frame", 0))
     key = f"ovito-info:{src['import_path']}:{frame}:{body.get('refresh', 0)}"
-    return _job(key, "OVITO reads the trajectory", lambda progress=None: dict(source=src, **worker.ask({"op": "info", "frame": frame, **src})))
+    def run(progress=None):
+        _prep(src, [frame], progress)
+        return dict(source=src, **worker.ask({"op": "info", "frame": frame, **src}))
+    return _job(key, "OVITO reads the trajectory", run)
+
+
+def _refs(spec):
+    """Reference frames the pipeline reads besides the current one (Displacement vectors)."""
+    return [int(m.get("reference_frame", 0)) for m in spec.get("modifiers") or [] if m.get("enabled", True) and m.get("type") == "displacements"]
+
+
+def _prep(src, frames, progress=None):
+    """Remote sources: fetch the files of these frames from the cluster first (no-op for local files)."""
+    remote.prepare(src, frames, progress)
 
 
 def _spec(body):
@@ -166,6 +184,9 @@ def render(body: dict = Body(...)):
         jobs.forget(key)
 
     def run(progress=None):
+        anim = (spec.get("render") or {}).get("anim") or {}
+        _prep(spec["source"], (list(range(int(anim.get("start", 0)), int(anim.get("end", 0)) + 1, max(1, int(anim.get("every", 1))))) if movie
+                               else [int(spec.get("frame", 0))]) + _refs(spec), progress)
         if not movie:
             res = worker.ask({"op": "run", "spec": spec, "image_path": str(image)})
             _prune()
@@ -196,6 +217,7 @@ def export(body: dict = Body(...)):
     name = f"export_{uuid.uuid4().hex[:10]}{EXPORT_FORMATS[fmt]}"
 
     def run(progress=None):
+        _prep(spec["source"], [int(spec.get("frame", 0))] + _refs(spec), progress)
         res = worker.ask({"op": "export", "spec": spec, "path": str(OUT_DIR / name), "format": fmt, "columns": cols})
         _prune()
         return dict(file=name, bytes=res["bytes"])
@@ -209,6 +231,7 @@ def verify(body: dict = Body(...)):
     frame, ref = int(body.get("frame", 0)), int(body.get("reference", 0))
 
     def run(progress=None):
+        _prep(src, [frame, ref], progress)
         npz = OUT_DIR / f"verify_{uuid.uuid4().hex[:8]}.npz"
         o = worker.ask({"op": "displacements", "frame": frame, "reference": ref, "out": str(npz), **src})
         with np.load(npz) as f:
@@ -251,6 +274,7 @@ def live(body: dict = Body(...)):
         for p in OUT_DIR.glob("live_*.bin"):                 # never fetched (closed tab): drop after 10 minutes
             if time.time() - p.stat().st_mtime > 600:
                 p.unlink(missing_ok=True)
+        _prep(spec["source"], [int(spec.get("frame", 0))] + _refs(spec), progress)
         return dict(file=name, **worker.ask({"op": "live", "spec": spec, "frame": spec.get("frame", 0), "out": str(OUT_DIR / name)}))
     return _job(f"ovito-live:{name}", f"OVITO computes frame {spec.get('frame', 0)}", run)
 
@@ -270,6 +294,7 @@ def atom(body: dict = Body(...)):
     """All OVITO particle properties of one particle (index after the pipeline) of a live frame: {spec, index}."""
     try:
         spec = _spec(body)
+        _prep(spec["source"], [int(spec.get("frame", 0))] + _refs(spec))
         return worker.ask({"op": "atom", "spec": spec, "frame": int(spec.get("frame", 0)), "index": int(body.get("index", -1))}, 600)
     except ValueError as e:
         raise HTTPException(422, str(e))
@@ -318,6 +343,7 @@ def frames_job(body: dict = Body(...)):
     src = spec["source"]
 
     def run(progress=None):
+        _prep(src, [0], progress)
         info = worker.ask({"op": "info", "frame": 0, **src})
         n = info["num_frames"]
         bad = [f for f in frames if not 0 <= f < n]
@@ -333,6 +359,7 @@ def frames_job(body: dict = Body(...)):
                 if progress:
                     eta = (time.time() - t0) / k * (len(frames) - k) if k else None
                     progress(k / len(frames), f"frame {f} ({k + 1} of {len(frames)})" + (f", about {eta:.0f} s left" if eta else ""))
+                _prep(src, [f] + (_refs(spec) if body.get("apply_pipeline") else []))
                 rows.append(worker.ask({"op": "frame_table", "spec": spec, "frame": f, "apply_pipeline": bool(body.get("apply_pipeline")),
                                         "include_derived": bool(body.get("include_derived")), "dump_columns": dump_cols,
                                         "raw_properties": info["properties"], "stats": want_stats,

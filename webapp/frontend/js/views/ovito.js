@@ -12,6 +12,7 @@ import { AtomRenderer, VIEWS, matrices, V } from "../studio/render.js";
 import { browserSource } from "../studio/source.js";
 import { pickCodec, mp4Writer } from "../studio/movie.js";
 import { buildFramesPanel, exportDefaults } from "./ovito_frames.js";
+import { openHpc } from "./ovito_hpc.js";
 
 const KEY = "nanocut.ovito.v2";
 const MODS = [
@@ -113,6 +114,7 @@ export async function render(root) {
   const bar = el("div", { class: "st-bar" }, svg("folder"),
     el("button", { class: "btn primary", type: "button", "data-tip": "Upload dump files from this computer to the OVITO server (kept 24 h)", onclick: () => pickFiles.click() }, "Upload files…"),
     el("button", { class: "btn", type: "button", "data-tip": "Upload a folder of dumps (searched two levels deep)", onclick: () => pickDir.click() }, "Upload folder…"),
+    el("button", { class: "btn", type: "button", "data-tip": "Connect to an HPC cluster over SSH and open dumps that stay there", onclick: () => openHpc((source, label) => open(source, { ...source, label })) }, "HPC…"),
     pickFiles, pickDir, pathIn, pathList, el("button", { class: "btn", type: "button", onclick: () => scan(pathIn.value) }, "Open path"), seqSel, srcInfo);
   const glc = el("canvas", { class: "gl", "aria-hidden": "true" });
   const ovc = el("canvas", { class: "ov", tabindex: "0", role: "img", "aria-label": "OVITO viewport. Drag to rotate, right-drag or Shift-drag to pan, wheel to zoom, double-click to zoom all, click a particle to inspect it." });
@@ -199,7 +201,7 @@ export async function render(root) {
 
   async function open(source, last) {
     stop();
-    const same = S.last && JSON.stringify([S.last.upload, S.last.dir, S.last.pattern]) === JSON.stringify([last.upload, last.dir, last.pattern]);
+    const same = S.last && JSON.stringify([S.last.upload, S.last.remote, S.last.dir, S.last.pattern]) === JSON.stringify([last.upload, last.remote, last.dir, last.pattern]);
     busy("OVITO reads the trajectory…");
     let inf;
     try { inf = await api.job("/api/ovito/info", { method: "POST", data: { ...source, frame: 0 }, pollMs: 200 }); }
