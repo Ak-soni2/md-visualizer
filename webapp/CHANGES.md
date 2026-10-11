@@ -1,5 +1,22 @@
 # Changes
 
+## Hosting on Vercel, Studio in the browser, movies, WebGL Visualizer (2026-10-11)
+
+- **Vercel hosting (frontend + API):** `tools/stage_vercel.py` assembles `build/vercel` (frontend in `public/`, FastAPI as
+  one Python function, engine and bundled data); deployed to https://md-visualizer-mauve.vercel.app. On Vercel jobs run
+  inside the request (`jobs.INLINE`), OVITO reports itself unavailable, responses are gzip compressed.
+- **Studio reads local dumps in the browser:** `js/studio/dumpparse.js` (port of `studio.py`), `dumpworker.js`,
+  `source.js` (browser and server sources behind one interface). `tools/check_dump_reader.py` compares it with
+  `studio.py` on the sample run and on synthetic triclinic/scaled/element/multi-frame/gzip dumps: identical ids, types,
+  steps and cells; values within 2 float32 ulps.
+- **Movie export:** `js/studio/movie.js`; MP4 (H.264 via WebCodecs, `js/vendor/mp4-muxer.mjs`, MIT) or PNG sequence
+  into a folder; label placeholders `[Timestep]`, `[Frame]`, `[Time]`.
+- **Visualizer on the GPU:** `js/viewer.js` now draws with the Studio's WebGL2 sphere renderer (same interface, same
+  camera, overlays and picking); up to 400,000 atoms per frame.
+- **Fixed:** element names (`element` column) were dropped by `studio.py` under pandas 3 (the column dtype is no longer
+  `object`); the `hidden` attribute did not hide buttons (`.btn` display rule); `selfcheck.py` now also accepts jobs
+  that finish inside the request (47/47 pass in both modes).
+
 ## OVITO page (2026-10-11)
 
 New page "OVITO" (Alt+9). It uses the official OVITO Python module for reading, analysis and rendering. The Visualizer

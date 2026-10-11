@@ -64,7 +64,7 @@ export async function render(root, { sim, navigate }) {
   const cmax = el("input", { class: "input num", type: "number", step: "any", "aria-label": "Colour maximum", disabled: true, style: { width: "100%" } });
   const layerBox = el("div", {});
   const typeBox = el("div", {});
-  const maxSel = el("select", { class: "select", "aria-label": "Atoms drawn" }, ...[20000, 60000, 120000, 250000].map(n => el("option", { value: n, selected: n === S.maxAtoms }, `${num(n)} atoms max`)));
+  const maxSel = el("select", { class: "select", "aria-label": "Atoms drawn" }, ...[20000, 60000, 120000, 250000, 400000].map(n => el("option", { value: n, selected: n === S.maxAtoms }, `${num(n)} atoms max`)));
   const slabChk = el("input", { type: "checkbox" });
   const zlo = el("input", { class: "input num", type: "number", step: "0.5", value: 0, "aria-label": "Section z minimum (Å)", style: { width: "100%" } });
   const zhi = el("input", { class: "input num", type: "number", step: "0.5", value: 5, "aria-label": "Section z maximum (Å)", style: { width: "100%" } });

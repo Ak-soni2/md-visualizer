@@ -13,9 +13,13 @@ then open http://127.0.0.1:8600 (interactive API docs at http://127.0.0.1:8600/d
 It uses the project's `.venv`; FastAPI and uvicorn are installed into it on first start if missing
 (`webapp/backend/requirements.txt`).
 
-Self-check of the API against the real project data (47 checks):
+Hosted version (frontend + API on Vercel): https://md-visualizer-mauve.vercel.app (see *Deployment*).
+
+Self-check of the API against the real project data (47 checks), and of the browser's dump reader against the
+backend's (needs Node.js):
 ```bat
 .venv\Scripts\python webapp\backend\selfcheck.py
+.venv\Scripts\python webapp\tools\check_dump_reader.py
 ```
 
 ## What the interface does
@@ -24,21 +28,30 @@ Self-check of the API against the real project data (47 checks):
 |---|---|---|
 | **Workspace** | Project explorer (verified directory tree with origin badges), simulation catalogue with filters, selected run's files | disk scan |
 | **Overview** | Workpiece/material, tool, process, integration, laser, output, model atom counts per layer, trajectory statistics, warnings and missing data | `params.json` / preset, `geometry.Model`, dump headers |
-| **Visualizer** | Atom viewport (rotate, pan, zoom, hover pick), playback with timeline, colour by temperature / coordination / stress / energy / speed / layer / type / laser zone, layer and type filters, thin z-section, overlays (surface, laser zone, tool outline, depth line, axes, scale bar) | three labelled sources: **Trajectory** (LAMMPS dumps, simulation output), **Initial configuration** (computed by NanoCut, not output), **Schematic** (mock) |
+| **Visualizer** | Atom viewport drawn on the GPU (WebGL2 spheres; rotate, pan, zoom, hover pick), playback with timeline, colour by temperature / coordination / stress / energy / speed / layer / type / laser zone, layer and type filters, thin z-section, overlays (surface, laser zone, tool outline, depth line, axes, scale bar) | three labelled sources: **Trajectory** (LAMMPS dumps, simulation output), **Initial configuration** (computed by NanoCut, not output), **Schematic** (mock) |
 | **Analysis** | Force and temperature series vs cutting distance with steady-state window, summary (means, std, Fc/Ft), per-frame metrics job (pile-up height, contact-zone T, coordination), run comparison with parameter diff, saved figures | `*_forces_temps.txt`, dumps, PNGs in run folders |
 | **Parameters** | Every value with provenance: **file** (deck line, opens the read-only source viewer at that line), **computed**, **editable** (inputs), **missing** | decks, `params.json`, presets, model |
 | **Decks** | Every NanoCut parameter (same set, choices and help as the Streamlit setup tab: material, a0, sizes, layers, boundaries x/y/z, crystal orientations, potential and tool-workpiece cross term (Morse/ZBL/LJ), tool shape and angles, laser, thermostats, time steps, output, MPI); start from a run, preset or params.json; live validation; generate and download A/B and params.json; nothing is written on the server | `nanocut.schema`, `nanocut.deck` |
 | **Validation** | Parsing vs scientific validation per simulation, archived verification (potential files, decks vs reference), last inspection time, re-run | files + `reference/*_checks.json` |
-| **Studio** | A small OVITO-style workstation for any LAMMPS dump (details below) | any dump folder or file you open |
+| **Studio** | A small OVITO-style workstation for any LAMMPS dump, with PNG and MP4 export (details below) | dump folders or files on your computer (read in the browser), or paths the backend can read |
 | **OVITO** | Analysis and images made by the official OVITO Python module (details below) | any dump folder or file, read by OVITO |
 
 Keyboard: `Alt+1…8` views, `?` help, `/` search, `Esc` close; visualizer `Space` play, `,`/`.` frames, arrows/`+`/`-`/`0` in the viewport.
 
 ## Studio (OVITO-style viewer for publication images)
 
-Paste a folder (searched two levels deep) or a single dump file into the bar and press **Open**. Files are recognised
-by content (`ITEM: TIMESTEP`), grouped into wildcard sequences such as `dump.cutsic.*.lammpstrj` and sorted by the
-number in the file name; one file with many frames is indexed frame by frame. Nothing is ever written.
+**Open folder…** (searched two levels deep) or **Open files…** (one multi-frame dump, or several frame files, also
+`.gz`) reads the dumps on your computer directly in the browser, in a Web Worker: nothing is uploaded, so this works on
+the hosted version for the 2-million-atom production runs. **Open path** asks the backend instead (the run folders it can
+see; on Vercel, the bundled ones). Files are recognised by content (`ITEM: TIMESTEP`), grouped into wildcard sequences
+such as `dump.cutsic.*.lammpstrj` and sorted by the number in the file name; one file with many frames is indexed frame
+by frame. Nothing is ever written.
+
+The browser reader (`frontend/js/studio/dumpparse.js`) is a port of `backend/app/studio.py` with the same rules (atoms
+sorted by id; positions from `x`, `xu`, `xs` or `xsu`; triclinic cells recovered from the bounding box; `|v|`;
+displacements with the minimum image along periodic directions). `tools/check_dump_reader.py` runs both on the same
+files: ids, types, steps, cells and column lists are identical, values agree within 2 float32 ulps. Where they differ
+the browser is the more precise one (it parses in float64 and rounds once; the backend subtracts float32 positions).
 
 - **Viewport:** every atom of the frame (2 million atoms tested) drawn on the GPU (WebGL2) as shaded spheres with correct
   intersections; OVITO's standard views (Top, Bottom, Front, Back, Left, Right, Ortho) plus *Surface* (looking down −y
@@ -55,6 +68,10 @@ number in the file name; one file with many frames is indexed frame by frame. No
   only Δx/Δy/Δz.
 - **Render:** PNG at any size (GPU limit), white/any/transparent background, 2× or 3× supersampling; the *Preview* frame
   shows exactly what the image contains. Download or copy to the clipboard.
+- **Movie:** a frame range (every n-th frame) rendered exactly like *Render image*, overlays included, each frame shown
+  for exactly 1/fps s. MP4 (H.264, encoded in the browser with WebCodecs; plays in PowerPoint) or a lossless PNG
+  sequence written into a folder (Chrome/Edge). Colour-coding ranges stay fixed for all frames. Text labels accept
+  `[Timestep]`, `[Frame]` and `[Time]` (from the MD time step entered in the Render tab).
 - **Pile-up tab:** surface level (detected on frame 0 with the tool removed: median over 10 Å × 10 Å cells of the
   highest atom per cell), then per frame: height of the highest atom above the surface (H), number of atoms higher than
   surface + threshold (burr/pile-up atoms), and their lateral span (D). H and D can be added to the image as dimension
@@ -168,24 +185,40 @@ webapp/
   the backend is reachable by others.
 - Values shown are read from files, computed by NanoCut (labelled "computed"), or are clearly labelled mock/demo data.
 
-## Deployment (prepared, not deployed)
+## Deployment (Vercel: frontend and API in one project)
 
-- **Frontend on Vercel:** deploy `webapp/frontend` as a static site (`vercel.json` included, no build step). Set the
-  backend URL before the app script, e.g. in `index.html`: `<script>window.NANOCUT_API_BASE="https://api.example.org"</script>`.
-- **Backend separately:** `uvicorn webapp.backend.app.main:app --host 0.0.0.0 --port 8600` on a machine that has the
+```bat
+.venv\Scripts\python webapp\tools\stage_vercel.py
+cd build\vercel && npx vercel deploy --prod
+```
+`stage_vercel.py` copies into `build/vercel`: the frontend as `public/` (served by the CDN), the API as one Python
+function (`app.py`, FastAPI, 300 s, 2 GB), the engine, potentials, reference notes, the run folders with their dumps and the
+text files of the reference decks from `C:\BTP\Cutting`. Not bundled: `runs/smoke3` (413 MB), restart files, the 45 GB
+of dumps in `Cutting/5-30` and `Manual.pdf`; those show fewer frames/files than on this PC. It deploys to the same
+Vercel project as before, so the URL stays https://md-visualizer-mauve.vercel.app.
+
+On Vercel (`VERCEL` is set): background jobs run inside the request that starts them (functions share no memory, so
+polling another instance would fail); the Studio's backend paths are limited to the bundled folders and your own dumps
+are read in the browser; the OVITO page reports itself unavailable (OVITO with Qt is ~400 MB). Responses are gzip
+compressed to stay under the 4.5 MB response limit (a full 97,815-atom frame: 4.2 MB → 1.1 MB).
+
+- **Backend elsewhere:** `uvicorn webapp.backend.app.main:app --host 0.0.0.0 --port 8600` on a machine that has the
   project files; set `NANOCUT_CORS_ORIGINS=https://<your-vercel-app>.vercel.app`, and optionally
-  `NANOCUT_PROJECT_ROOT` / `NANOCUT_REFERENCE_ROOT`.
+  `NANOCUT_PROJECT_ROOT` / `NANOCUT_REFERENCE_ROOT`; point a static frontend at it with
+  `<script>window.NANOCUT_API_BASE="https://api.example.org"</script>` in `index.html`.
 - **Without a backend** the frontend switches to the offline demo (amber strip, "Offline demo · fixtures"); regenerate
   the snapshot with `.venv\Scripts\python webapp\tools\make_fixtures.py`.
 
 ## Known limits
 
-- The atom viewer is a CPU canvas renderer, smooth up to ~100–250k drawn atoms; full 2-million-atom frames are
-  sub-sampled (or sliced with the z-section). It is designed to be swapped for the existing renderer / WebGL later.
+- The Visualizer draws up to 400,000 sub-sampled atoms per frame (server limit); full 2-million-atom frames belong in
+  the Studio, which draws every atom. On Vercel, frames near 400k atoms can exceed the response limit even compressed.
 - Full-size production dumps (~300 MB per frame) take a few seconds to parse per frame; playback is then frame by frame.
 - Per-frame metrics and structural analysis beyond coordination (CNA, DXA) remain in OVITO/Python scripts.
-- Studio: no CNA/DXA/cluster analysis, no bonds, no ambient-occlusion renderer, no movie export (render frame by frame);
-  gzip dumps are read as one frame per file; values are float32 (≈1e-4 Å at 1000 Å). It covers the OVITO features
+- Studio: no CNA/DXA/cluster analysis, no bonds, no ambient-occlusion renderer; gzip dumps are read as one frame per
+  file; values are float32 (≈1e-4 Å at 1000 Å). In the browser a 2-million-atom frame takes ~1 GB of memory while parsed
+  (2 frames are cached instead of 3). It covers the OVITO features
   used for burr, pile-up and displacement figures.
 - Self-check: 47 checks (27 + 4 deck editor + 10 Studio + 6 OVITO).
-- Authentication is not implemented; bind to 127.0.0.1 (default) unless deployed behind access control.
+- Authentication is not implemented: the hosted API is public (read-only, serves only the bundled files).
+  Locally, bind to 127.0.0.1 (default) unless deployed behind access control.

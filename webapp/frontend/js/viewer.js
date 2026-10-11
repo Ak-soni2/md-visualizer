@@ -1,15 +1,23 @@
-// AtomViewer: CPU canvas renderer for MD snapshots (tens to hundreds of thousands of atoms).
-// Orthographic camera, painter's algorithm (back to front), depth shading, hover picking, overlays.
-// Kept independent of the data source so the existing MD renderer (or a WebGL engine) can replace it later
-// behind the same small interface: setAtoms(), setOverlays(), setView(), fit(), onHover.
+// AtomViewer: the Visualizer's viewport. Atoms are drawn on the GPU by the Studio's renderer (studio/render.js:
+// shaded sphere impostors with per-pixel depth, so overlapping atoms intersect correctly); overlays, picking and the
+// camera stay on a 2D canvas on top. Orthographic camera: yaw/pitch about the scene centre, zoom, pan in pixels.
+// Interface used by views/visualizer.js: setAtoms(), setColors(), setVisible(), setOverlays(), setOptions(),
+// setView(), fit(), onHover, onViewChange, destroy().
+import { AtomRenderer } from "./studio/render.js";
 
 const DEG = Math.PI / 180;
+const ATOM_RADIUS = 0.75;                                            // Å, drawn radius at atom size 1
 
 export class AtomViewer {
   constructor(canvas, { background = "#0a0c0e" } = {}) {
-    this.canvas = canvas;
+    this.canvas = canvas;                                            // overlays + input
+    this.gl = document.createElement("canvas");                      // atoms, behind it
+    this.gl.setAttribute("aria-hidden", "true");
+    canvas.before(this.gl);
+    this.R = new AtomRenderer(this.gl);
     this.ctx = canvas.getContext("2d");
     this.bg = background;
+    this.bgRgb = background.match(/\w\w/g).map(h => parseInt(h, 16) / 255);
     this.n = 0;
     this.cam = { yaw: 0, pitch: 0, zoom: 1, panX: 0, panY: 0 };
     this.opts = { pointScale: 1, axes: true, scale: true, surface: true, laser: true, outline: true, depthLine: true };
@@ -24,30 +32,41 @@ export class AtomViewer {
 
   /** x,y,z: number arrays; rgb: Uint8ClampedArray (3n); visible: Uint8Array (n) */
   setAtoms({ x, y, z, rgb, visible }, { keepView = true } = {}) {
-    const n = x.length;
-    const firstData = !this.n;
+    const n = x.length, firstData = !this.n;
     this.n = n;
     this.x = Float32Array.from(x); this.y = Float32Array.from(y); this.z = Float32Array.from(z);
-    this.rgb = rgb; this.visible = visible || new Uint8Array(n).fill(1);
-    this.sx = new Float32Array(n); this.sy = new Float32Array(n); this.depth = new Float32Array(n);
-    this.order = new Uint32Array(n);
+    const p = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { p[3 * i] = this.x[i]; p[3 * i + 1] = this.y[i]; p[3 * i + 2] = this.z[i]; }
+    this.R.setPositions(p);
+    this.R.setRadii(new Float32Array(n).fill(ATOM_RADIUS));
+    this.setColors(rgb);
+    this.setVisible(visible || new Uint8Array(n).fill(1));
     if (firstData || !keepView) this.fit();
+  }
+  setColors(rgb) { this.rgb = rgb; this.R.setColors(rgb); this.request(); }
+  setVisible(vis) {
+    this.visible = vis;
+    let m = 0;
+    for (let i = 0; i < this.n; i++) if (vis[i]) m++;
+    const idx = new Uint32Array(m);
+    for (let i = 0, k = 0; i < this.n; i++) if (vis[i]) idx[k++] = i;
+    this.R.setIndices(idx);
+    this._bounds = null;
     this.request();
   }
-  setColors(rgb) { this.rgb = rgb; this.request(); }
-  setVisible(vis) { this.visible = vis; this.request(); }
   setOverlays(o) { this.overlays = o || {}; this.request(); }
   setOptions(o) { Object.assign(this.opts, o); this.request(); }
 
   bounds() {
+    if (this._bounds) return this._bounds;
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
     for (let i = 0; i < this.n; i++) {
       if (!this.visible[i]) continue;
       const a = this.x[i], b = this.y[i], c = this.z[i];
       if (a < x0) x0 = a; if (a > x1) x1 = a; if (b < y0) y0 = b; if (b > y1) y1 = b; if (c < z0) z0 = c; if (c > z1) z1 = c;
     }
-    if (!Number.isFinite(x0)) return { x0: 0, x1: 1, y0: 0, y1: 1, z0: 0, z1: 1 };
-    return { x0, x1, y0, y1, z0, z1 };
+    this._bounds = Number.isFinite(x0) ? { x0, x1, y0, y1, z0, z1 } : { x0: 0, x1: 1, y0: 0, y1: 1, z0: 0, z1: 1 };
+    return this._bounds;
   }
   fit() {
     const b = this.bounds();
@@ -65,82 +84,46 @@ export class AtomViewer {
 
   request() { if (!this._dirty) { this._dirty = true; requestAnimationFrame(() => { this._dirty = false; this.render(); }); } }
 
+  /** pixels per Å: fits the projected extent of the current view */
   _scale(W, H) {
     const b = this.bounds();
-    const ext = this.extent || 1;
-    const fit = 0.9 * Math.min(W, H * 1.0) / ext;
-    // fit the projected extent of the current view rather than the 3D diagonal
     const cy = Math.cos(this.cam.yaw), sy = Math.sin(this.cam.yaw), cp = Math.cos(this.cam.pitch), sp = Math.sin(this.cam.pitch);
     const dx = b.x1 - b.x0, dy = b.y1 - b.y0, dz = b.z1 - b.z0;
     const w = Math.abs(cy) * dx + Math.abs(sy) * dz;
     const h = Math.abs(cp) * dy + Math.abs(sp) * (Math.abs(sy) * dx + Math.abs(cy) * dz);
     const fitView = 0.9 * Math.min(W / Math.max(w, 1), H / Math.max(h, 1));
-    return (Number.isFinite(fitView) ? fitView : fit) * this.cam.zoom;
+    return (Number.isFinite(fitView) ? fitView : 0.9 * Math.min(W, H) / (this.extent || 1)) * this.cam.zoom;
   }
-
-  project(px, py, pz, W, H, s) {
+  /** rows of the camera rotation: screen right (x1), screen up (y2), towards the viewer (z2) */
+  _axes() {
     const cy = Math.cos(this.cam.yaw), sy = Math.sin(this.cam.yaw), cp = Math.cos(this.cam.pitch), sp = Math.sin(this.cam.pitch);
-    const X = px - this.center[0], Y = py - this.center[1], Z = pz - this.center[2];
-    const x1 = cy * X + sy * Z, z1 = -sy * X + cy * Z;
-    const y2 = cp * Y - sp * z1, z2 = sp * Y + cp * z1;
-    return [W / 2 + this.cam.panX + x1 * s, H / 2 + this.cam.panY - y2 * s, z2];
+    return [[cy, 0, sy], [sp * sy, cp, -sp * cy], [-cp * sy, sp, cp * cy]];
+  }
+  project(px, py, pz, W, H, s) {
+    const [r, u, f] = this._axes(), X = px - this.center[0], Y = py - this.center[1], Z = pz - this.center[2];
+    return [W / 2 + this.cam.panX + (r[0] * X + r[1] * Y + r[2] * Z) * s, H / 2 + this.cam.panY - (u[0] * X + u[1] * Y + u[2] * Z) * s, f[0] * X + f[1] * Y + f[2] * Z];
   }
 
   render() {
     const dpr = window.devicePixelRatio || 1;
     const W = Math.max(1, Math.round(this.canvas.clientWidth * dpr)), H = Math.max(1, Math.round(this.canvas.clientHeight * dpr));
-    if (this.canvas.width !== W || this.canvas.height !== H) { this.canvas.width = W; this.canvas.height = H; }
+    for (const c of [this.canvas, this.gl]) if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
     const g = this.ctx;
     g.setTransform(1, 0, 0, 1, 0, 0);
-    g.fillStyle = this.bg; g.fillRect(0, 0, W, H);
-    if (!this.n) return;
+    g.clearRect(0, 0, W, H);
+    const bg = [...this.bgRgb, 1];
+    if (!this.n) { this.R.setIndices(new Uint32Array(0)); this.R.draw({ view: new Float32Array(16), proj: new Float32Array(16), bg }); return; }
     const s = this._scale(W, H);
     this._s = s; this._W = W; this._H = H; this._dpr = dpr;
-    const cy = Math.cos(this.cam.yaw), sy = Math.sin(this.cam.yaw), cp = Math.cos(this.cam.pitch), sp = Math.sin(this.cam.pitch);
-    const [ox, oy, oz] = this.center, hw = W / 2 + this.cam.panX, hh = H / 2 + this.cam.panY;
-    let m = 0, dmin = Infinity, dmax = -Infinity;
-    for (let i = 0; i < this.n; i++) {
-      if (!this.visible[i]) { this.sx[i] = -1e9; continue; }
-      const X = this.x[i] - ox, Y = this.y[i] - oy, Z = this.z[i] - oz;
-      const x1 = cy * X + sy * Z, z1 = -sy * X + cy * Z;
-      const y2 = cp * Y - sp * z1, z2 = sp * Y + cp * z1;
-      const qx = hw + x1 * s, qy = hh - y2 * s;
-      this.sx[i] = qx; this.sy[i] = qy; this.depth[i] = z2;
-      if (qx < -10 || qy < -10 || qx > W + 10 || qy > H + 10) continue;
-      this.order[m++] = i;
-      if (z2 < dmin) dmin = z2; if (z2 > dmax) dmax = z2;
-    }
-    const ord = this.order.subarray(0, m);
-    const dep = this.depth;
-    ord.sort((a, b) => dep[a] - dep[b]);                       // far first, near last (painter's algorithm)
-    // point size from physical atom size (~0.75 Å radius), clamped
-    const ps = Math.max(1, Math.min(14, Math.round(1.5 * s * this.opts.pointScale)));
-    const disc = discMask(ps);
-    const img = g.createImageData(W, H);
-    const buf = new Uint32Array(img.data.buffer);
-    const bgc = this.bg.match(/\w\w/g).map(h => parseInt(h, 16));
-    buf.fill((255 << 24) | (bgc[2] << 16) | (bgc[1] << 8) | bgc[0]);
-    const span = dmax - dmin || 1, rgb = this.rgb, half = (ps - 1) >> 1;
-    for (let k = 0; k < m; k++) {
-      const i = ord[k];
-      const shade = 0.6 + 0.4 * ((dep[i] - dmin) / span);
-      const r = rgb[i * 3] * shade, gg = rgb[i * 3 + 1] * shade, b = rgb[i * 3 + 2] * shade;
-      const col = (255 << 24) | ((b & 255) << 16) | ((gg & 255) << 8) | (r & 255);
-      const cx = Math.round(this.sx[i]) - half, cyy = Math.round(this.sy[i]) - half;
-      for (let d = 0; d < disc.length; d += 2) {
-        const px = cx + disc[d], py = cyy + disc[d + 1];
-        if (px >= 0 && py >= 0 && px < W && py < H) buf[py * W + px] = col;
-      }
-      // a darker rim on larger atoms helps separate neighbours
-      if (ps >= 5) {
-        const rim = (255 << 24) | (((b * 0.55) & 255) << 16) | (((gg * 0.55) & 255) << 8) | ((r * 0.55) & 255);
-        for (let d = 0; d < disc.rim.length; d += 2) {
-          const px = cx + disc.rim[d], py = cyy + disc.rim[d + 1];
-          if (px >= 0 && py >= 0 && px < W && py < H) buf[py * W + px] = rim;
-        }
-      }
-    }
-    g.putImageData(img, 0, 0);
+    // view: rotate about the centre and push the scene in front of the camera; projection: orthographic, s px per Å
+    const [r, u, f] = this._axes(), c = this.center, b = this.bounds();
+    const dc = Math.hypot(Math.max(Math.abs(b.x0 - c[0]), Math.abs(b.x1 - c[0])), Math.max(Math.abs(b.y0 - c[1]), Math.abs(b.y1 - c[1])), Math.max(Math.abs(b.z0 - c[2]), Math.abs(b.z1 - c[2])));
+    const D = dc + 10, dot = (a, v) => a[0] * v[0] + a[1] * v[1] + a[2] * v[2];
+    const view = new Float32Array([r[0], u[0], f[0], 0, r[1], u[1], f[1], 0, r[2], u[2], f[2], 0, -dot(r, c), -dot(u, c), -dot(f, c) - D, 1]);
+    const hw = W / (2 * s), hh = H / (2 * s), near = 0.1, far = 2 * D;
+    const proj = new Float32Array([1 / hw, 0, 0, 0, 0, 1 / hh, 0, 0, 0, 0, -2 / (far - near), 0,
+      this.cam.panX / (W / 2), -this.cam.panY / (H / 2), -(far + near) / (far - near), 1]);
+    this.R.draw({ view, proj, bg, rscale: this.opts.pointScale });
     this._drawOverlays(W, H, s, dpr);
   }
 
@@ -178,12 +161,10 @@ export class AtomViewer {
     if (this.opts.scale) this._scalebar(W, H, s, dpr);
   }
   _triad(W, H, dpr) {
-    const g = this.ctx, L = 26 * dpr, ox = 30 * dpr, oy = H - 64 * dpr;
-    const cy = Math.cos(this.cam.yaw), sy = Math.sin(this.cam.yaw), cp = Math.cos(this.cam.pitch), sp = Math.sin(this.cam.pitch);
-    const axes = [["x", 1, 0, 0, "#df6b5d"], ["y", 0, 1, 0, "#93b26a"], ["z", 0, 0, 1, "#6f9fd6"]];
+    const g = this.ctx, L = 26 * dpr, ox = 30 * dpr, oy = H - 64 * dpr, [r, u] = this._axes();
     g.font = `${11 * dpr}px ${getComputedStyle(document.body).fontFamily}`;
-    for (const [n, X, Y, Z, c] of axes) {
-      const x1 = cy * X + sy * Z, z1 = -sy * X + cy * Z, y2 = cp * Y - sp * z1;
+    for (const [n, k, c] of [["x", 0, "#df6b5d"], ["y", 1, "#93b26a"], ["z", 2, "#6f9fd6"]]) {
+      const x1 = r[k], y2 = u[k];
       if (Math.hypot(x1, y2) < 0.08) { g.fillStyle = c; g.fillText(n + "·", ox - 3 * dpr, oy + 4 * dpr); continue; }
       g.strokeStyle = c; g.lineWidth = 1.6 * dpr; g.beginPath(); g.moveTo(ox, oy); g.lineTo(ox + x1 * L, oy - y2 * L); g.stroke();
       g.fillStyle = c; g.fillText(n, ox + x1 * (L + 8 * dpr) - 3 * dpr, oy - y2 * (L + 8 * dpr) + 4 * dpr);
@@ -198,16 +179,21 @@ export class AtomViewer {
     label(g, nice >= 10 ? `${nice / 10} nm` : `${nice} Å`, x0 + px / 2 - 14 * dpr, y - 8 * dpr, dpr, "rgba(233,230,223,0.85)");
   }
 
+  /** index of the front-most visible atom whose drawn disc contains the cursor, or -1 */
   pick(clientX, clientY) {
     if (!this.n || !this._W) return -1;
-    const r = this.canvas.getBoundingClientRect(), dpr = this._dpr;
-    const px = (clientX - r.left) * dpr, py = (clientY - r.top) * dpr;
-    const rad = Math.max(4 * dpr, 1.5 * this._s * this.opts.pointScale);
+    const rc = this.canvas.getBoundingClientRect(), dpr = this._dpr, W = this._W, H = this._H, s = this._s;
+    const px = (clientX - rc.left) * dpr, py = (clientY - rc.top) * dpr;
+    const rad = Math.max(4 * dpr, ATOM_RADIUS * s * this.opts.pointScale);
+    const [r, u, f] = this._axes(), [ox, oy, oz] = this.center, hw = W / 2 + this.cam.panX, hh = H / 2 + this.cam.panY;
     let best = -1, bestDepth = -Infinity;
     for (let i = 0; i < this.n; i++) {
       if (!this.visible[i]) continue;
-      const dx = this.sx[i] - px, dy = this.sy[i] - py;
-      if (dx * dx + dy * dy <= rad * rad && this.depth[i] > bestDepth) { best = i; bestDepth = this.depth[i]; }
+      const X = this.x[i] - ox, Y = this.y[i] - oy, Z = this.z[i] - oz;
+      const dx = hw + (r[0] * X + r[1] * Y + r[2] * Z) * s - px, dy = hh - (u[0] * X + u[1] * Y + u[2] * Z) * s - py;
+      if (dx * dx + dy * dy > rad * rad) continue;
+      const d = f[0] * X + f[1] * Y + f[2] * Z;
+      if (d > bestDepth) { best = i; bestDepth = d; }
     }
     return best;
   }
@@ -255,21 +241,9 @@ export class AtomViewer {
       if (map[e.key]) { e.preventDefault(); e.stopPropagation(); map[e.key](); this.request(); this.onViewChange?.(this.cam); }
     });
   }
-  destroy() { this.ro.disconnect(); }
+  destroy() { this.ro.disconnect(); this.gl.remove(); this.R.gl.getExtension("WEBGL_lose_context")?.loseContext(); }
 }
 
-const discCache = new Map();
-function discMask(ps) {
-  if (discCache.has(ps)) return discCache.get(ps);
-  const pts = [], rim = [], r = ps / 2, c = (ps - 1) / 2;
-  for (let j = 0; j < ps; j++) for (let i = 0; i < ps; i++) {
-    const d = Math.hypot(i - c, j - c);
-    if (ps <= 3 || d <= r) { pts.push(i, j); if (ps >= 5 && d > r - 1.1) rim.push(i, j); }
-  }
-  const out = Int16Array.from(pts); out.rim = Int16Array.from(rim);
-  discCache.set(ps, out);
-  return out;
-}
 function label(g, text, x, y, dpr, color) {
   g.font = `${11 * dpr}px ${getComputedStyle(document.body).fontFamily}`;
   g.fillStyle = color; g.fillText(text, x, y);

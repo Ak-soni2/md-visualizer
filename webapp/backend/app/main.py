@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -32,6 +33,8 @@ from nanocut.schema import Experiment, validate as schema_validate
 app = FastAPI(title="NanoCut API", version=__version__,
               description="Read-only API over the NanoCut project: simulations, parameters, trajectories, analysis, validation.")
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["GET", "POST"], allow_headers=["*"])
+# frames are large JSON (~35 B per atom); compressed they also fit the 4.5 MB response limit of a Vercel function
+app.add_middleware(GZipMiddleware, minimum_size=4096, compresslevel=5)
 STARTED = time.time()
 
 
