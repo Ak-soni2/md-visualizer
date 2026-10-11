@@ -7,6 +7,8 @@ data folders). Long operations run as background jobs.
 import hashlib
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -16,8 +18,8 @@ import uuid
 from pathlib import Path
 
 import numpy as np
-from fastapi import APIRouter, Body, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Body, HTTPException, Request
+from fastapi.responses import FileResponse, Response
 
 from . import jobs, ovito_script, studio
 
@@ -25,6 +27,9 @@ router = APIRouter(prefix="/api/ovito", tags=["ovito"])
 WORKER = Path(__file__).resolve().parents[1] / "ovito_worker.py"
 OUT_DIR = Path(tempfile.gettempdir()) / "nanocut_ovito"
 OUT_DIR.mkdir(exist_ok=True)
+UPLOAD_DIR = OUT_DIR / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
+UPLOAD_KEEP_S = 24 * 3600
 KEEP_FILES = 60
 TIMEOUT_S = float(os.environ.get("NANOCUT_OVITO_TIMEOUT", "1800"))
 EXPORT_FORMATS = {"lammps/dump": ".dump", "xyz": ".xyz", "lammps/data": ".data", "vasp": ".poscar"}
@@ -82,11 +87,17 @@ def _prune():
 
 
 def _source(body):
-    """{path, pattern?} -> OVITO import path (wildcard sequence or one file scanned for all its frames)."""
-    try:
-        p = studio.resolve(body.get("path"))
-    except Exception as e:
-        raise HTTPException(404 if isinstance(e, FileNotFoundError) else 403 if isinstance(e, PermissionError) else 422, str(e))
+    """{path, pattern?} or {upload, pattern} -> OVITO import path (wildcard sequence or one file scanned for all its frames)."""
+    if body.get("upload"):                       # files uploaded from the browser (this server's temporary folder)
+        sid = str(body["upload"])
+        if not re.fullmatch(r"[0-9a-f]{16}", sid) or not (UPLOAD_DIR / sid).is_dir():
+            raise HTTPException(404, "upload not found (uploads are kept for 24 hours); upload the files again")
+        p = UPLOAD_DIR / sid
+    else:
+        try:
+            p = studio.resolve(body.get("path"))
+        except Exception as e:
+            raise HTTPException(404 if isinstance(e, FileNotFoundError) else 403 if isinstance(e, PermissionError) else 422, str(e))
     pattern = body.get("pattern")
     if p.is_file():
         if not studio.is_dump(p):
@@ -146,17 +157,28 @@ def render(body: dict = Body(...)):
     except ValueError as e:
         raise HTTPException(422, str(e))
     digest = hashlib.sha1(json.dumps(spec, sort_keys=True).encode()).hexdigest()[:16]
+    movie = bool((spec.get("render") or {}).get("anim"))
     image = OUT_DIR / f"render_{digest}.png"
+    folder = OUT_DIR / f"movie_{digest}"                # movie: one PNG per frame, rendered by OVITO
     key = f"ovito-render:{digest}"
     rec = jobs.by_key(key)
-    if rec and rec["status"] == "done" and not image.exists():
+    if rec and rec["status"] == "done" and not (folder.is_dir() if movie else image.exists()):
         jobs.forget(key)
 
     def run(progress=None):
-        res = worker.ask({"op": "run", "spec": spec, "image_path": str(image)})
-        _prune()
-        return dict(image=image.name, bytes=image.stat().st_size, script=ovito_script.build(spec, image_path=image.name), **res)
-    return _job(key, "OVITO renders the image", run)
+        if not movie:
+            res = worker.ask({"op": "run", "spec": spec, "image_path": str(image)})
+            _prune()
+            return dict(image=image.name, bytes=image.stat().st_size, script=ovito_script.build(spec, image_path=image.name), **res)
+        for old in sorted(OUT_DIR.glob("movie_*"), key=lambda p: p.stat().st_mtime)[:-2]:
+            shutil.rmtree(old, ignore_errors=True)
+        shutil.rmtree(folder, ignore_errors=True)
+        folder.mkdir()
+        res = worker.ask({"op": "run", "spec": spec, "image_path": str(folder / "frame_*.png")})
+        frames = sorted(folder.glob("frame_*.png"), key=lambda p: int(re.sub(r"\D", "", p.stem) or 0))
+        return dict(movie=folder.name, frames=[p.name for p in frames], bytes=sum(p.stat().st_size for p in frames),
+                    script=ovito_script.build(spec, image_path="frame_*.png"), **res)
+    return _job(key, "OVITO renders the movie" if movie else "OVITO renders the image", run)
 
 
 @router.post("/export")
@@ -212,12 +234,86 @@ def verify(body: dict = Body(...)):
     return _job(f"ovito-verify:{src['import_path']}:{frame}:{ref}:{time.time():.0f}", "OVITO vs NanoCut cross-check", run)
 
 
+# ---------------------------------------------------------------------------------------------- live 3D viewport
+@router.post("/live")
+def live(body: dict = Body(...)):
+    """OVITO evaluates the page's pipeline for one frame; the browser draws the result in 3D. The job result holds
+    OVITO's numbers (attributes, statistics, legend) and the name of a binary file with, per particle after the
+    pipeline: position (float32 x3), display colour (uint8 x3, padded to 4 bytes), display radius (float32); then
+    dislocation line vertices (float32 x3, pairs). Fetch it once from /api/ovito/live/{name}."""
+    try:
+        spec = _spec(body)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    name = f"live_{uuid.uuid4().hex[:12]}.bin"
+
+    def run(progress=None):
+        for p in OUT_DIR.glob("live_*.bin"):                 # never fetched (closed tab): drop after 10 minutes
+            if time.time() - p.stat().st_mtime > 600:
+                p.unlink(missing_ok=True)
+        return dict(file=name, **worker.ask({"op": "live", "spec": spec, "frame": spec.get("frame", 0), "out": str(OUT_DIR / name)}))
+    return _job(f"ovito-live:{name}", f"OVITO computes frame {spec.get('frame', 0)}", run)
+
+
+@router.get("/live/{name}")
+def live_file(name: str):
+    if not re.fullmatch(r"live_[0-9a-f]{12}\.bin", name) or not (OUT_DIR / name).is_file():
+        raise HTTPException(404, "frame data not found (fetched already or expired)")
+    p = OUT_DIR / name
+    data = p.read_bytes()
+    p.unlink(missing_ok=True)
+    return Response(content=data, media_type="application/octet-stream")
+
+
+@router.post("/atom")
+def atom(body: dict = Body(...)):
+    """All OVITO particle properties of one particle (index after the pipeline) of a live frame: {spec, index}."""
+    try:
+        spec = _spec(body)
+        return worker.ask({"op": "atom", "spec": spec, "frame": int(spec.get("frame", 0)), "index": int(body.get("index", -1))}, 600)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+
+
+# ---------------------------------------------------------------------------------------------- uploads
+@router.post("/upload/{sid}/{name}")
+async def upload(sid: str, name: str, request: Request, offset: int = 0):
+    """Append one chunk of a file uploaded from the browser to this server's temporary folder (kept 24 hours).
+    offset must equal the bytes already received, so an interrupted upload can continue where it stopped."""
+    if not re.fullmatch(r"[0-9a-f]{16}", sid) or not re.fullmatch(r"[\w.\-]{1,200}", name) or name.startswith("."):
+        raise HTTPException(422, "invalid upload id or file name")
+    for d in UPLOAD_DIR.iterdir():
+        if d.is_dir() and d.name != sid and time.time() - d.stat().st_mtime > UPLOAD_KEEP_S:
+            shutil.rmtree(d, ignore_errors=True)
+    folder = UPLOAD_DIR / sid
+    folder.mkdir(exist_ok=True)
+    path = folder / name
+    have = path.stat().st_size if path.exists() else 0
+    if offset != have:
+        raise HTTPException(409, f"expected offset {have}")
+    chunk = await request.body()
+    with open(path, "ab") as f:
+        f.write(chunk)
+    os.utime(folder)
+    return dict(name=name, bytes=have + len(chunk))
+
+
+@router.get("/movie/{folder}/{name}")
+def movie_frame(folder: str, name: str):
+    p = OUT_DIR / folder / name
+    if not re.fullmatch(r"movie_[0-9a-f]{16}", folder) or not re.fullmatch(r"frame_\d+\.png", name) or not p.is_file():
+        raise HTTPException(404, "movie frame not found (the latest 3 movies are kept)")
+    return FileResponse(p, media_type="image/png")
+
+
 @router.get("/file/{name}")
 def file(name: str):
     p = (OUT_DIR / name).resolve()
     if p.parent != OUT_DIR.resolve() or not p.is_file():
         raise HTTPException(404, "file not found (renders are kept for the latest 60 results)")
-    media = "image/png" if p.suffix == ".png" else "application/octet-stream"
+    media = {".png": "image/png", ".mp4": "video/mp4"}.get(p.suffix, "application/octet-stream")
     return FileResponse(p, media_type=media, filename=p.name)
 
 

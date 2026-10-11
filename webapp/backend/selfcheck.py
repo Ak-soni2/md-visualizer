@@ -203,6 +203,18 @@ if ost.get("available"):
     check("OVITO script: user text stays a string literal", "expression=\"'); import os #\"" in c.post("/api/ovito/script", json={"spec": dict(ospec, modifiers=[
           {"type": "expression_selection", "expression": "'); import os #"}])}).json()["script"])
     check("OVITO file endpoint refuses other paths", c.get("/api/ovito/file/..%2F..%2Fsettings.py").status_code == 404)
+    # live 3D viewport: OVITO's particles after the pipeline, as binary; selected particles in OVITO's selection colour
+    lspec = {"source": osrc, "frame": 2, "types": {}, "cell": False, "modifiers": [{"type": "select_type", "types": [1], "enabled": True}]}
+    lv = job_result(wait("/api/ovito/live", "post", json={"spec": lspec}))
+    raw = c.get(f"/api/ovito/live/{lv.get('file')}").content
+    n = lv.get("layout", {}).get("n", 0)
+    col = np.frombuffer(raw, np.uint8, n * 3, n * 12).reshape(-1, 3) if n else np.zeros((0, 3), np.uint8)
+    pos = np.frombuffer(raw, np.float32, n * 3).reshape(-1, 3) if n else col
+    ost3 = lv.get("stats", {})
+    check("OVITO live frame: particles, positions, binary layout", n == 97815 and len(raw) == n * 12 + n * 3 + (-n * 3) % 4 + n * 4
+          and abs(float(pos[:, 1].max()) - ost3.get("Position.Y", [0, 0])[1]) < 1e-3, f"{n} particles, {len(raw)} bytes")
+    check("OVITO live colours: 43,363 selected (tool) drawn in OVITO's selection colour", int((col == [255, 0, 0]).all(1).sum()) == 43363,
+          f"{int((col == [255, 0, 0]).all(1).sum())} red")
 
 print("\n" + ("ALL CHECKS PASSED" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

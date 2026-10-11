@@ -145,11 +145,15 @@ export class AtomRenderer {
     this.bRad = buf("a_rad", 1, gl.FLOAT, false);
     this.bIdx = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.bIdx);
     gl.bindVertexArray(null);
-    this.lineVao = gl.createVertexArray(); gl.bindVertexArray(this.lineVao);
-    this.bLine = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, this.bLine);
-    const ll = gl.getAttribLocation(this.lineProg, "a_pos"); gl.enableVertexAttribArray(ll); gl.vertexAttribPointer(ll, 3, gl.FLOAT, false, 0, 0);
-    gl.bindVertexArray(null);
-    this.count = 0; this.cellVerts = 0;
+    const lineVao = () => {
+      const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+      const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
+      const ll = gl.getAttribLocation(this.lineProg, "a_pos"); gl.enableVertexAttribArray(ll); gl.vertexAttribPointer(ll, 3, gl.FLOAT, false, 0, 0);
+      gl.bindVertexArray(null); return [vao, b];
+    };
+    [this.lineVao, this.bLine] = lineVao();
+    [this.extraVao, this.bExtra] = lineVao();                         // e.g. dislocation lines (pairs of vertices)
+    this.count = 0; this.cellVerts = 0; this.extraVerts = 0;
     this.maxPoint = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1];
     this.maxImage = Math.min(gl.getParameter(gl.MAX_RENDERBUFFER_SIZE), ...gl.getParameter(gl.MAX_VIEWPORT_DIMS));
   }
@@ -172,6 +176,10 @@ export class AtomRenderer {
     const gl = this.gl; gl.bindBuffer(gl.ARRAY_BUFFER, this.bLine); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(e), gl.STATIC_DRAW);
     this.cellVerts = 24;
   }
+  setLines(verts, color = [0.2, 0.85, 0.3]) {
+    const gl = this.gl; gl.bindBuffer(gl.ARRAY_BUFFER, this.bExtra); gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+    this.extraVerts = verts.length / 3; this.extraColor = color;
+  }
   /** Draw into the bound framebuffer of size w x h. o: {view, proj, bg:[r,g,b,a], rscale, flat, cellColor|null} */
   _draw(w, h, o) {
     const gl = this.gl;
@@ -189,13 +197,15 @@ export class AtomRenderer {
       gl.drawElements(gl.POINTS, this.count, gl.UNSIGNED_INT, 0);
       gl.bindVertexArray(null);
     }
-    if (this.cellVerts && o.cellColor) {
+    const lines = (vao, n, col) => {
       gl.useProgram(this.lineProg);
       gl.uniformMatrix4fv(gl.getUniformLocation(this.lineProg, "u_view"), false, o.view);
       gl.uniformMatrix4fv(gl.getUniformLocation(this.lineProg, "u_proj"), false, o.proj);
-      gl.uniform3fv(gl.getUniformLocation(this.lineProg, "u_col"), o.cellColor);
-      gl.bindVertexArray(this.lineVao); gl.drawArrays(gl.LINES, 0, this.cellVerts); gl.bindVertexArray(null);
-    }
+      gl.uniform3fv(gl.getUniformLocation(this.lineProg, "u_col"), col);
+      gl.bindVertexArray(vao); gl.drawArrays(gl.LINES, 0, n); gl.bindVertexArray(null);
+    };
+    if (this.cellVerts && o.cellColor) lines(this.lineVao, this.cellVerts, o.cellColor);
+    if (this.extraVerts) lines(this.extraVao, this.extraVerts, this.extraColor);
   }
   draw(o) {
     const gl = this.gl; gl.bindFramebuffer(gl.FRAMEBUFFER, null);

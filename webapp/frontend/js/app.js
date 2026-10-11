@@ -13,7 +13,7 @@ export const VIEWS = [
   { id: "decks", label: "Decks", load: () => import("./views/decks.js") },
   { id: "validation", label: "Validation", load: () => import("./views/validation.js") },
   { id: "studio", label: "Studio", load: () => import("./views/studio.js"), full: true },
-  { id: "ovito", label: "OVITO", load: () => import("./views/ovito.js") },
+  { id: "ovito", label: "OVITO", load: () => import("./views/ovito.js"), full: true },
 ];
 
 let current = { view: null, cleanup: null, token: 0 };

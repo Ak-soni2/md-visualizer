@@ -99,9 +99,9 @@ def build(spec, image_path="image.png", cached=False):
     styles = {}
     for tid, st in (spec.get("types") or {}).items():
         t = _int(tid, "type id", 0, 10 ** 6)
-        styles[t] = (_rgb(st.get("color", "#cccccc"), f"type {t} colour"), _num(st.get("radius", 0.5), f"type {t} radius", 0.01, 50))
+        styles[t] = (_rgb(st.get("color", "#cccccc"), f"type {t} colour"), _num(st.get("radius", 0), f"type {t} radius", 0, 50))
     show_cell = bool(spec.get("cell", False))
-    L.append(f"TYPE_STYLE = {styles!r}    # type id -> (colour RGB 0..1, radius Å)")
+    L.append(f"TYPE_STYLE = {styles!r}    # type id -> (colour RGB 0..1, radius Å; 0 = OVITO's default radius)")
     L.append("def particle_types_and_cell(frame, data):")
     L.append("    types = data.particles_.particle_types_")
     L.append("    for tid, (color, radius) in TYPE_STYLE.items():")
@@ -167,16 +167,27 @@ def build(spec, image_path="image.png", cached=False):
 
     view, rnd, ov = spec.get("view") or {}, spec.get("render") or {}, spec.get("overlays") or {}
     w, h = _int(rnd.get("w", 1600), "width", 64, 8000), _int(rnd.get("h", 1000), "height", 64, 8000)
-    vt = _choice(view.get("type", "Top"), VIEWS, "view")
     L.append("pipeline.add_to_scene()")
-    L.append(f"vp = Viewport(type=Viewport.Type.{vt})")
-    if vt in ("Ortho", "Perspective") and view.get("camera_dir"):
-        d = tuple(_num(x, "camera direction") for x in view["camera_dir"][:3])
-        L.append(f"vp.camera_dir = {d!r}")
-    L.append(f"vp.zoom_all(size=({w}, {h}))")
-    zoom = _num(view.get("zoom", 1.0), "zoom", 0.05, 100)
-    if zoom != 1.0:
-        L.append(f"vp.fov = vp.fov / {zoom!r}    # zoom factor")
+    cam = view.get("camera")
+    if cam:      # the camera of the interactive 3D viewport, exactly (ortho: fov = half the visible height in Å)
+        persp = bool(cam.get("perspective"))
+        vec = lambda k: tuple(_num(x, f"camera {k}") for x in (cam.get(k) or [])[:3])
+        pos, d, up = vec("pos"), vec("dir"), vec("up")
+        if len(pos) != 3 or len(d) != 3 or len(up) != 3:
+            raise ValueError("camera: pos, dir and up need three numbers each")
+        fov = _num(cam.get("fov"), "camera fov", 1e-6, 1e7 if not persp else 3.1)
+        L.append(f"vp = Viewport(type=Viewport.Type.{'Perspective' if persp else 'Ortho'}, camera_pos={pos!r}, camera_dir={d!r}, "
+                 f"camera_up={up!r}, fov={fov!r})")
+    else:
+        vt = _choice(view.get("type", "Top"), VIEWS, "view")
+        L.append(f"vp = Viewport(type=Viewport.Type.{vt})")
+        if vt in ("Ortho", "Perspective") and view.get("camera_dir"):
+            d = tuple(_num(x, "camera direction") for x in view["camera_dir"][:3])
+            L.append(f"vp.camera_dir = {d!r}")
+        L.append(f"vp.zoom_all(size=({w}, {h}))")
+        zoom = _num(view.get("zoom", 1.0), "zoom", 0.05, 100)
+        if zoom != 1.0:
+            L.append(f"vp.fov = vp.fov / {zoom!r}    # zoom factor")
     if rnd.get("renderer", "opengl") == "tachyon":
         L.append(f"renderer = TachyonRenderer(antialiasing_samples={_int(rnd.get('aa', 12), 'antialiasing', 1, 64)!r}, "
                  f"ambient_occlusion={bool(rnd.get('ao', True))!r}, shadows={bool(rnd.get('shadows', False))!r})")
@@ -203,6 +214,14 @@ def build(spec, image_path="image.png", cached=False):
                  f"font_size={_num(lab.get('font_size', 0.06), 'label size', 0.01, 1)!r}, text_color={_rgb(lab.get('color', '#000000'), 'label colour')!r}, "
                  f"offset_x={_num(lab.get('ox', 0), 'label offset x', -1, 1)!r}, offset_y={_num(lab.get('oy', 0), 'label offset y', -1, 1)!r}))")
     bg = _rgb(rnd.get("bg", "#ffffff"), "background")
-    L.append(f"vp.render_image(size=({w}, {h}), filename={str(image_path)!r}, background={bg!r}, alpha={bool(rnd.get('alpha'))!r}, "
-             f"frame=FRAME, renderer=renderer)")
+    anim = rnd.get("anim")
+    if anim:     # OVITO renders every frame (image_path contains "*", the frame number); the browser encodes the video
+        a, b = _int(anim.get("start", 0), "first frame", 0), _int(anim.get("end", 0), "last frame", 0)
+        if b < a:
+            raise ValueError("last frame is before the first")
+        L.append(f"vp.render_anim(filename={str(image_path)!r}, size=({w + w % 2}, {h + h % 2}), fps={_int(anim.get('fps', 10), 'fps', 1, 120)!r}, "
+                 f"background={bg!r}, renderer=renderer, range=({a}, {b}), every_nth={_int(anim.get('every', 1), 'every n-th frame', 1, 100000)!r})")
+    else:
+        L.append(f"vp.render_image(size=({w}, {h}), filename={str(image_path)!r}, background={bg!r}, alpha={bool(rnd.get('alpha'))!r}, "
+                 f"frame=FRAME, renderer=renderer)")
     return "\n".join(L) + "\n"
