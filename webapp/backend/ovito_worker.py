@@ -23,6 +23,7 @@ import numpy as np                           # noqa: E402
 import ovito                                 # noqa: E402
 from ovito.io import export_file, import_file  # noqa: E402
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))          # memdump
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 from webapp.backend.app import ovito_script  # noqa: E402
@@ -35,8 +36,52 @@ def cached_pipeline(path, multiple_frames=False):
     if key not in _cache:
         if len(_cache) >= 2:
             _cache.pop(next(iter(_cache)))
-        _cache[key] = import_file(path, multiple_frames=True) if multiple_frames else import_file(path)
+        if path.startswith("remote://"):                      # HPC: frames streamed into memory, no file on disk
+            from ovito.pipeline import Pipeline, PythonSource
+            _cache[key] = Pipeline(source=PythonSource(delegate=_remote_source(path)))
+        else:
+            _cache[key] = import_file(path, multiple_frames=True) if multiple_frames else import_file(path)
     return _cache[key]
+
+
+def _bridge_get(route, **q):
+    """GET from the backend's loopback channel to the open SSH connection (bytes, in memory)."""
+    import urllib.parse
+    import urllib.request
+    port, token = os.environ["NANOCUT_BRIDGE"].split(":")
+    req = urllib.request.Request(f"http://127.0.0.1:{port}/{route}?{urllib.parse.urlencode(q)}", headers={"X-NanoCut-Bridge": token})
+    with urllib.request.urlopen(req, timeout=3600) as r:
+        return r.read()
+
+
+def _remote_source(url):
+    """OVITO pipeline source for remote://sid=..&dir=..&pattern=..: every frame is read over SSH into memory and
+    turned into OVITO data by memdump.fill (identical to OVITO's reader); nothing is written to disk."""
+    import urllib.parse
+    from ovito.pipeline import PipelineSourceInterface
+    import memdump
+    q = {k: v[0] for k, v in urllib.parse.parse_qs(url[len("remote://"):]).items()}
+    sid, rdir, pattern = q["sid"], q["dir"].rstrip("/"), q["pattern"]
+    files = json.loads(_bridge_get("files", sid=sid, dir=rdir, pattern=pattern))
+    if "*" in pattern:                                          # one frame per file
+        frames = [(name, 0, size) for name, size in files]
+    else:                                                       # one file with many frames: index it once (streamed)
+        name, size = files[0]
+        step, offs = 64 << 20, []
+        chunks = (_bridge_get("read", sid=sid, path=f"{rdir}/{name}", offset=o, length=min(step, size - o)) for o in range(0, size, step))
+        offs = memdump.frame_offsets(chunks)
+        frames = [(name, o, (offs[k + 1] if k + 1 < len(offs) else size) - o) for k, o in enumerate(offs)]
+
+    class RemoteDump(PipelineSourceInterface):
+        def compute_trajectory_length(self, **kwargs):
+            return len(frames)
+
+        def create(self, data, *, frame, **kwargs):
+            name, off, n = frames[frame]
+            raw = _bridge_get("read", sid=sid, path=f"{rdir}/{name}", offset=off, length=n)
+            memdump.fill(data, raw, f"sftp:{rdir}/{name}", frame)
+            del raw
+    return RemoteDump()
 
 
 def _clear_scene():

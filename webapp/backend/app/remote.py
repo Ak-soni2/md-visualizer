@@ -261,10 +261,88 @@ def mirror(source):
     return folder, files, fetch, lru, host
 
 
+# ------------------------------------------------------------------------------------------------ streaming to OVITO (no disk)
+# HPC trajectories are not copied to this computer: the OVITO worker process reads each frame's bytes through this
+# loopback-only channel straight from the open SFTP connection into memory (backend/memdump.py turns them into OVITO
+# data). Token-protected, bound to 127.0.0.1, read-only.
+_bridge = {}
+
+
+def bridge():
+    """(port, token) of the loopback channel, started once."""
+    if _bridge:
+        return _bridge["port"], _bridge["token"]
+    import json as _json
+    import secrets
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from urllib.parse import parse_qs, urlparse
+    token = secrets.token_hex(16)
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            if self.client_address[0] not in ("127.0.0.1", "::1") or self.headers.get("X-NanoCut-Bridge") != token:
+                return self.send_error(403)
+            u = urlparse(self.path)
+            q = {k: v[0] for k, v in parse_qs(u.query).items()}
+            s = _sessions.get(q.get("sid", ""))
+            if not s or not s["transport"].is_active():
+                return self.send_error(410, "HPC connection closed")
+            try:
+                if u.path == "/files":                                  # frame files of the sequence, in frame order
+                    body = _json.dumps(_files(s, q["dir"], q["pattern"])).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                elif u.path == "/read":                                 # bytes offset .. offset+length of one file
+                    path, off, n = q["path"], int(q["offset"]), int(q["length"])
+                    self.send_response(200)
+                    self.send_header("Content-Length", str(n))
+                    self.end_headers()
+                    step = 4 << 20
+                    with s["lock"]:
+                        with s["sftp"].open(path, "rb") as f:
+                            for piece in f.readv([(off + k, min(step, n - k)) for k in range(0, n, step)]):   # pipelined
+                                self.wfile.write(piece)
+                else:
+                    self.send_error(404)
+            except (OSError, KeyError, ValueError) as e:
+                try:
+                    self.send_error(500, str(e)[:200])
+                except OSError:
+                    pass
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True, name="nanocut-ssh-bridge").start()
+    _bridge.update(port=srv.server_address[1], token=token, server=srv)
+    return _bridge["port"], token
+
+
+def stream_url(source):
+    """OVITO import path of an HPC sequence: read through the bridge into memory, never written to disk."""
+    from urllib.parse import urlencode
+    get(source["remote"])
+    return "remote://" + urlencode({"sid": source["remote"], "dir": str(source["dir"]).rstrip("/") or "/", "pattern": str(source["pattern"])})
+
+
+def dump_columns(source):
+    """Column names from the first file's header, read over SFTP (a few kB, in memory)."""
+    s = get(source["remote"])
+    first = _files(s, str(source["dir"]), str(source["pattern"]))[0][0]
+    with s["lock"]:
+        with s["sftp"].open(f"{str(source['dir']).rstrip('/')}/{first}", "rb") as f:
+            head = f.read(65536).decode("ascii", "replace").split("\n")
+    return head[8].split()[2:] if len(head) > 8 and head[8].startswith("ITEM: ATOMS") else []
+
+
 def prepare(source, frames, progress=None):
-    """Make sure the files of these frames (and frame 0, which OVITO reads when it opens the trajectory) are on local
-    disk; empty the least recently used others beyond the cache size."""
-    if not source or not (source.get("remote") or source.get("blob")):
+    """Hosted uploads (Blob): make sure the files of these frames (and frame 0, which OVITO reads when it opens the
+    trajectory) are on local disk; empty the least recently used others beyond the cache size. HPC sources are
+    streamed into memory instead (bridge), so nothing to do for them."""
+    if not source or not source.get("blob"):
         return
     folder, files, fetch, used, host = mirror(source)
     need = sorted({0, *[int(f) for f in frames if f is not None]} & set(range(len(files)))) if len(files) > 1 else [0]

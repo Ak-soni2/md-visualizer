@@ -43,8 +43,10 @@ class _Worker:
         self.proc, self.lock, self.info = None, threading.Lock(), None
 
     def _start(self):
+        port, token = remote.bridge()                            # HPC frames reach the worker through this, in memory
         self.proc = subprocess.Popen([sys.executable, str(WORKER)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                      stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
+                                     env={**os.environ, "NANOCUT_BRIDGE": f"{port}:{token}"},
                                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         self.info = self._send({"op": "hello"}, 120)
 
@@ -89,7 +91,13 @@ def _prune():
 
 def _source(body):
     """{path, pattern?} or {upload, pattern} -> OVITO import path (wildcard sequence or one file scanned for all its frames)."""
-    if body.get("remote") or body.get("blob"):   # HPC files or hosted uploads, fetched frame by frame (remote.py)
+    if body.get("remote"):                       # HPC files: streamed into memory, never written to this computer
+        pat = str(body.get("pattern") or "")
+        if not pat or "/" in pat or not body.get("dir"):
+            raise HTTPException(422, "remote folder and file pattern required")
+        return dict(import_path=remote.stream_url(body), multiple_frames="*" not in pat, label=body.get("label") or remote.label(body),
+                    pattern=pat, remote=str(body["remote"]), dir=str(body["dir"]))
+    if body.get("blob"):                         # hosted uploads, fetched frame by frame (remote.py)
         folder = remote.mirror(body)[0]
         pat = str(body["pattern"])
         extra = dict(remote=str(body["remote"]), dir=str(body["dir"])) if body.get("remote") else dict(blob=body["blob"])
@@ -220,6 +228,8 @@ def export(body: dict = Body(...)):
 def verify(body: dict = Body(...)):
     """Cross-check: OVITO's Displacement vectors vs NanoCut's own dump parser (the Studio) for one frame."""
     src = _source(body)
+    if src.get("remote"):
+        raise HTTPException(422, "the cross-check reads files from disk; HPC trajectories are only streamed into memory")
     frame, ref = int(body.get("frame", 0)), int(body.get("reference", 0))
 
     def run(progress=None):
@@ -295,6 +305,8 @@ MAX_FRAMES = 100_000
 
 def _dump_columns(src):
     """Column names of the first dump file of the source (as written by LAMMPS, from its 'ITEM: ATOMS' line)."""
+    if src.get("remote"):
+        return remote.dump_columns(src)
     p = Path(src["import_path"])
     files = sorted(p.parent.glob(p.name), key=lambda f: [int(x) if x.isdigit() else x for x in re.split(r"(\d+)", f.name)]) if "*" in p.name else [p]
     if not files:

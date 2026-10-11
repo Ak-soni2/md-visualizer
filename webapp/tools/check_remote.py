@@ -1,11 +1,14 @@
 r"""HPC connection (backend/app/remote.py) against a local test SFTP server: host-key confirmation, wrong password,
-browsing, and OVITO results over SSH identical to the same files read locally (with displacements).
+browsing, OVITO results over SSH identical to the same files read locally (with displacements, live frames, ductile/brittle
+indicators, a multi-frame file), and nothing from the cluster written to this computer's disk (frames stream into memory).
 
     .venv\Scripts\python webapp\tools\check_remote.py
 
 The test server (paramiko, read-only, user 'tester') serves examples/ on 127.0.0.1; a temporary known_hosts is used.
 """
+import json
 import os
+import shutil
 import socket
 import sys
 import threading
@@ -98,7 +101,15 @@ def main():
     from webapp.backend.app import remote
     from webapp.backend.app.main import app
     remote.KNOWN = Path(tempfile.mkdtemp()) / "known_hosts"
-    port = run_server(here / "examples")
+    served = Path(tempfile.mkdtemp(prefix="nanocut_sftp_"))       # the "cluster": sample frames + one multi-frame file
+    shutil.copytree(here / "examples" / "sample_run", served / "sample_run")
+    (served / "multi").mkdir()
+    seq = sorted((served / "sample_run").glob("*_cut.*.lammpstrj"), key=lambda f: int(f.name.split(".")[-2]))
+    with open(served / "multi" / "all.lammpstrj", "wb") as out:
+        for f in seq:
+            out.write(f.read_bytes())
+    tmp_before = {str(f) for f in Path(tempfile.gettempdir()).rglob("*.lammpstrj")}
+    port = run_server(served)
     c, fails = TestClient(app), []
 
     def check(name, ok, info=""):
@@ -130,8 +141,27 @@ def main():
                                      "stats": True, "apply_pipeline": True}) for s in (rsrc, lsrc)]
     same = all(a["stats"] == b["stats"] and a["force"] == b["force"] for a, b in zip(res[0]["rows"], res[1]["rows"]))
     check("OVITO over SSH = OVITO on the local files (3 frames, displacements)", same)
+    # live frame and ductile/brittle indicators over SSH = local
+    def live(src):
+        b = c.post("/api/ovito/live", json={"spec": {"source": src, "frame": 2, "types": {}, "cell": False, "modifiers": mods}}).content
+        n = int.from_bytes(b[:4], "little")
+        return b[4 + n:], json.loads(b[4:4 + n])["stats"]
+    (rb, rs), (lb, ls) = live(rsrc), live(lsrc)
+    check("live 3D frame over SSH = local (positions, colours, radii, statistics)", rb == lb and rs == ls, f"{len(rb)} bytes")
+    reg = [job("/api/ovito/regime", {"spec": {"source": s, "frame": 0, "types": {}, "cell": False, "modifiers": []}, "frames": [0, 2],
+                                     "params": {"tool_types": [1]}})["rows"] for s in (rsrc, lsrc)]
+    check("ductile/brittle indicators over SSH = local", reg[0] == reg[1])
+    msrc = {"remote": sid, "dir": "/multi", "pattern": "all.lammpstrj"}
+    mres = job("/api/ovito/frames", {"spec": {"source": msrc, "frame": 0, "types": {}, "cell": False, "modifiers": []}, "frames": [0, 1, 2], "stats": True})
+    lres = job("/api/ovito/frames", {"spec": {"source": lsrc, "frame": 0, "types": {}, "cell": False, "modifiers": []}, "frames": [0, 1, 2], "stats": True})
+    check("one multi-frame file over SSH: frames found by streaming, statistics = local",
+          [r["timestep"] for r in mres["rows"]] == [100, 1300, 2500] and all(a["stats"] == b["stats"] for a, b in zip(mres["rows"], lres["rows"])))
+    # zero storage: no dump data anywhere on this computer's disk from the HPC session
+    written = [str(f) for f in (remote.MIRROR / sid).rglob("*") if f.is_file()] if (remote.MIRROR / sid).exists() else []
+    new_dumps = [f for f in (str(x) for x in Path(tempfile.gettempdir()).rglob("*.lammpstrj")) if f not in tmp_before and "nanocut_sftp_" not in f]
+    check("nothing from the cluster written to this computer's disk", not written and not new_dumps, f"{len(written)} cache files, {len(new_dumps)} new dumps")
     c.post(f"/api/remote/{sid}/disconnect")
-    check("disconnect removes the local frame cache", not (remote.MIRROR / sid).exists())
+    shutil.rmtree(served, ignore_errors=True)
     print("\n" + ("ALL CHECKS PASSED" if not fails else f"{len(fails)} FAILED: {fails}"))
     sys.exit(1 if fails else 0)
 
