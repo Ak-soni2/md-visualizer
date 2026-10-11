@@ -1,5 +1,6 @@
 /* Reset, typography and the application shell. */
 *, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }      /* the hidden attribute wins over component display rules */
 html, body { height: 100%; }
 body {
   margin: 0;

@@ -257,7 +257,7 @@ def _build_frame(src, index, progress=None):
     order = np.argsort(ids, kind="stable")                      # LAMMPS writes atoms in a different order every frame
     ids = ids[order]
     cols, names = {}, {}
-    if "element" in df and df["element"].dtype == object:
+    if "element" in df and not pd.api.types.is_numeric_dtype(df["element"]):     # object (pandas 2) or str (pandas 3)
         el = df["element"].to_numpy()[order]
         if "type" in df:
             t = df["type"].to_numpy()[order]

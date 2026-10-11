@@ -1,5 +1,5 @@
-// Studio: a small OVITO-style workstation for any LAMMPS dump. Open a folder or a dump file; the backend finds the
-// trajectory, parses one frame at a time (background job) and streams the requested columns as binary.
+// Studio: a small OVITO-style workstation for any LAMMPS dump. Open a folder or dump files from this computer (read in
+// the browser, never uploaded) or a path the backend can see; frames are parsed one at a time (studio/source.js).
 // Everything below (pipeline, colouring, slicing, selection, overlays, picking, measuring, image export) runs here.
 import * as api from "../api.js";
 import { state } from "../state.js";
@@ -7,6 +7,7 @@ import { el, clear, tabs, toast, num, bytes, svg, download, loading, errorState 
 import { AtomRenderer, VIEWS, matrices, V } from "../studio/render.js";
 import { MODIFIERS, newModifier, evaluate, neededColumns, displacementRef, GRADIENTS, OP_LIST, TYPE_PALETTE, hexToRgb } from "../studio/pipeline.js";
 import { drawOverlays, defaultOverlays, ALIGNS, measureValue, fmtVal } from "../studio/overlays.js";
+import { serverSource, browserSource } from "../studio/source.js";
 
 const KEY = "nanocut.studio.v1";
 const defaults = () => ({
@@ -55,11 +56,7 @@ const VIEW_TIP = {
 const COL_LABEL = { x: "x (Å)", y: "y (Å)", z: "z (Å)", dx: "dx (Å)", dy: "dy (Å)", dz: "dz (Å)", displacement: "|displacement| (Å)", v_magnitude: "|v| (velocity units)" };
 
 export async function render(root) {
-  if (api.apiMode() !== "live") {
-    root.append(el("div", { class: "view" }, el("div", { class: "state" }, el("b", {}, "The Studio needs the Python backend"),
-      el("span", {}, "It reads dump files from your disk. Start it with webapp\\run_web.bat and open http://127.0.0.1:8600."))));
-    return;
-  }
+  const live = api.apiMode() === "live";
   const S = loadSession();
   let saveT = 0;
   const save = () => { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(S, strip)); } catch { /* storage unavailable: settings live for this visit only */ } }, 300); };
@@ -68,8 +65,13 @@ export async function render(root) {
   const pathIn = el("input", { class: "input path", type: "text", list: "st-paths", placeholder: "Folder or dump file, e.g. D:\\Akshay\\Cutting_20_30\\AE", "aria-label": "Folder or dump file", value: S.last?.path || "" });
   const pathList = el("datalist", { id: "st-paths" });
   const seqSel = el("select", { class: "select seq", "aria-label": "Trajectory found in the folder", hidden: true });
-  const openBtn = el("button", { class: "btn primary", type: "button" }, "Open");
-  const bar = el("div", { class: "st-bar" }, svg("folder"), pathIn, pathList, openBtn, seqSel, el("span", { class: "st-src muted" }));
+  const openBtn = el("button", { class: "btn", type: "button", "data-tip": "Folder or file the backend can read (the bundled runs on the hosted version)" }, "Open path");
+  const pickDir = el("input", { type: "file", webkitdirectory: "", multiple: true, hidden: true, onchange: e => { scanFiles(e.target.files); e.target.value = ""; } });
+  const pickFiles = el("input", { type: "file", multiple: true, hidden: true, onchange: e => { scanFiles(e.target.files); e.target.value = ""; } });
+  const dirBtn = el("button", { class: "btn primary", type: "button", "data-tip": "Read a folder of dumps from this computer in the browser. Nothing is uploaded.", onclick: () => pickDir.click() }, "Open folder…");
+  const filesBtn = el("button", { class: "btn", type: "button", "data-tip": "One multi-frame dump, or several frame files (also .gz). Read in the browser.", onclick: () => pickFiles.click() }, "Open files…");
+  if (!live) { pathIn.hidden = true; openBtn.hidden = true; }
+  const bar = el("div", { class: "st-bar" }, svg("folder"), dirBtn, filesBtn, pickDir, pickFiles, pathIn, pathList, openBtn, seqSel, el("span", { class: "st-src muted" }));
   const glc = el("canvas", { class: "gl", "aria-hidden": "true" });
   const ovc = el("canvas", { class: "ov", tabindex: "0", role: "img", "aria-label": "Atom viewport. Drag to rotate, right-drag or Shift-drag to pan, wheel to zoom, double-click to zoom all, click an atom to inspect it." });
   const hud = el("div", { class: "st-hud" });
@@ -86,7 +88,7 @@ export async function render(root) {
   catch (e) { clear(stage).append(errorState(e)); return; }
 
   // ---------------------------------------------------------------------------------------------- state
-  let src = null, fi = 0, frame = null, out = null, cam = null, scene = { center: [0, 0, 0], radius: 100 };
+  let SRC = serverSource, src = null, fi = 0, frame = null, out = null, cam = null, scene = { center: [0, 0, 0], radius: 100 };
   let picked = null, measureA = null, measuring = false, playing = false, loadTok = 0, alive = true, raf = 0;
   const modStatus = new Map();
 
@@ -103,8 +105,23 @@ export async function render(root) {
     if (!path) { toast("Enter a folder or a dump file path.", "warn"); pathIn.focus(); return; }
     busy("Looking for LAMMPS dump files…");
     let r;
-    try { r = await api.get(`/api/studio/scan?path=${encodeURIComponent(path)}`); }
+    try { r = await serverSource.scan(path); }
     catch (e) { idle(); return showState(errorState(e)); }
+    SRC = serverSource;
+    await showSequences(path, r);
+  }
+
+  async function scanFiles(list) {
+    if (!list?.length) return;
+    busy(`Looking for LAMMPS dump files in ${num(list.length)} file${list.length > 1 ? "s" : ""}…`);
+    let r;
+    try { r = await browserSource.scan(list); }
+    catch (e) { idle(); return showState(errorState(e)); }
+    SRC = browserSource;
+    await showSequences(r.path, r);
+  }
+
+  async function showSequences(path, r) {
     if (!r.sequences.length) { idle(); return showState(el("div", { class: "state err" }, el("b", {}, "No LAMMPS dump found"), el("span", {}, `Nothing starting with 'ITEM: TIMESTEP' in ${r.path} or the two folder levels below it.`))); }
     clear(seqSel);
     r.sequences.forEach((s, i) => seqSel.append(el("option", { value: i }, `${s.dir.split(/[\\/]/).slice(-1)[0]}/${s.pattern} · ${s.count} file${s.count > 1 ? "s" : ""} · ${bytes(s.bytes)}`)));
@@ -119,11 +136,12 @@ export async function render(root) {
     stop();
     busy(`Indexing ${seq.pattern}…`);
     try {
-      src = await api.job("/api/studio/open", { method: "POST", data: { path: seq.dir, pattern: seq.pattern, refresh }, onProgress: progress });
+      src = await SRC.open(seq, refresh, progress);
     } catch (e) { idle(); return showState(errorState(e)); }
-    S.recent = [path, ...S.recent.filter(p => p !== path)].slice(0, 8);
+    const local = SRC === browserSource;
+    if (!local) S.recent = [path, ...S.recent.filter(p => p !== path)].slice(0, 8);
     const sameSource = S.last && S.last.dir === seq.dir && S.last.pattern === seq.pattern;
-    S.last = { path, dir: seq.dir, pattern: seq.pattern, frame: sameSource ? S.last.frame : 0 };
+    S.last = { path, dir: seq.dir, pattern: seq.pattern, frame: sameSource ? S.last.frame : 0, local };
     if (S.analysis.surfaceFrom?.source !== src.id) { S.analysis.surface = null; S.analysis.surfaceFrom = null; }   // belongs to another trajectory
     lastPile = null;
     save(); fillPaths();
@@ -134,24 +152,10 @@ export async function render(root) {
   }
 
   // ---------------------------------------------------------------------------------------------- frames
-  async function fetchCols(f, names) {
-    const buf = await api.getBinary(`/api/studio/sources/${src.id}/frames/${f.index}/data?cols=${encodeURIComponent(names.join(","))}${f.ref != null ? `&ref=${f.ref}` : ""}`);
-    names.forEach((c, k) => {
-      const off = k * f.n * 4;
-      f.cols[c] = c === "id" ? new Uint32Array(buf, off, f.n) : new Float32Array(buf, off, f.n);
-    });
-  }
   async function ensureCols(f) {
     const want = neededColumns(S.pipeline).filter(c => f.meta.columns.includes(c) && !(c in f.cols));
-    if (!want.length) return;
-    try { await fetchCols(f, want); }
-    catch (e) {
-      if (e.status !== 409) throw e;                         // evicted from the server cache meanwhile: load again
-      await api.job(loadUrl(f.index, f.ref), { method: "POST", onProgress: progress });
-      await fetchCols(f, want);
-    }
+    if (want.length) Object.assign(f.cols, await SRC.cols(src, f, want));
   }
-  const loadUrl = (i, ref) => `/api/studio/sources/${src.id}/frames/${i}/load${ref != null ? `?ref=${ref}` : ""}`;
 
   async function loadFrame(i, fit = false) {
     const tok = ++loadTok, ref = displacementRef(S.pipeline);
@@ -159,7 +163,7 @@ export async function render(root) {
     const refOk = ref != null && ref < src.n_frames ? ref : null;
     if (!frame) busy(`Loading frame ${i}…`); else setHud(`Loading frame ${i}…`);
     try {
-      const meta = await api.job(loadUrl(i, refOk), { method: "POST", pollMs: 120, onProgress: frame ? (r => setHud(`Loading frame ${i}… ${Math.round(r.progress * 100)}%`)) : progress });
+      const meta = await SRC.load(src, i, refOk, frame ? (r => setHud(`Loading frame ${i}… ${Math.round(r.progress * 100)}%`)) : progress, 120);
       if (tok !== loadTok || !alive) return;
       const f = { meta, index: i, ref: refOk, n: meta.natoms, cols: {} };
       await ensureCols(f);
@@ -172,7 +176,7 @@ export async function render(root) {
       runPipeline();
       if (fit || !cam.fitted) { zoomAll(); cam.fitted = true; }
       idle(); updateTimeline(); refreshSide();
-      if (playing && fi + 1 < src.n_frames) api.post(loadUrl(fi + 1, refOk)).catch(() => {});   // prefetch the next frame
+      if (playing && fi + 1 < src.n_frames) SRC.prefetch(src, fi + 1, refOk);   // prefetch the next frame
     } catch (e) {
       if (tok !== loadTok) return;
       stop(); idle();
@@ -312,7 +316,7 @@ export async function render(root) {
     picked = i; requestDraw();
     if (i == null) { pickHud.hidden = true; refreshSide("data"); return; }
     try {
-      const rowv = await api.get(`/api/studio/sources/${src.id}/frames/${fi}/atom/${i}${frame.ref != null ? `?ref=${frame.ref}` : ""}`);
+      const rowv = await SRC.atom(src, fi, i, frame.ref);
       frame.pickedRow = rowv;
       pickHud.hidden = false;
       pickHud.replaceChildren(el("b", {}, `Atom id ${rowv.id} · type ${rowv.type}`), el("span", {}, `x ${num(rowv.x, 3)}  y ${num(rowv.y, 3)}  z ${num(rowv.z, 3)} Å`),
@@ -407,12 +411,14 @@ export async function render(root) {
   function progress(rec) { busyNode?.update(rec); }
   function idle() { overlayState.hidden = true; clear(overlayState); busyNode = null; }
   function startState() {
-    const runs = state.sims.filter(s => s.kind === "run" && s.n_frames);
+    const runs = live ? state.sims.filter(s => s.kind === "run" && s.n_frames) : [];
     const pick = p => () => { pathIn.value = p; scanAndOpen(p); };
     showState(el("div", { class: "state st-start" },
       el("b", {}, "Open a trajectory"),
-      el("span", {}, "Paste a folder (it is searched two levels deep for LAMMPS dump files) or one dump file, then press Open. Files are only read, never changed."),
-      S.last ? el("button", { class: "btn primary", type: "button", onclick: pick(S.last.path) }, `Reopen ${S.last.path}`) : null,
+      el("span", {}, "Open folder… reads the LAMMPS dumps of a folder on this computer (searched two levels deep) directly in the browser: nothing is uploaded and files are only read. Open files… takes one multi-frame dump or several frame files, also .gz."),
+      el("div", { class: "field-row" }, el("button", { class: "btn primary", type: "button", onclick: () => pickDir.click() }, "Open folder…"), el("button", { class: "btn", type: "button", onclick: () => pickFiles.click() }, "Open files…")),
+      live && S.last && !S.last.local ? el("button", { class: "btn", type: "button", onclick: pick(S.last.path) }, `Reopen ${S.last.path}`) : null,
+      runs.length ? el("span", { class: "muted small" }, "Or a run the backend can read:") : null,
       runs.length ? el("div", { class: "chips" }, runs.map(s => el("button", { class: "chip", type: "button", onclick: pick(s.path) }, s.label, el("span", { class: "n" }, `${s.n_frames} frames`)))) : null));
   }
 
@@ -460,7 +466,8 @@ export async function render(root) {
     p.append(sec("Data source",
       el("dl", { class: "kv" }, el("dt", {}, "Folder"), el("dd", {}, src.dir), el("dt", {}, "Files"), el("dd", {}, `${src.pattern} (${num(src.files)} file${src.files > 1 ? "s" : ""})`),
         el("dt", {}, "Frames"), el("dd", {}, num(src.n_frames)), el("dt", {}, "Atoms"), el("dd", {}, num(frame?.n ?? src.natoms))),
-      el("button", { class: "btn", type: "button", "data-tip": "Index the folder again (new frames written by a running job)", onclick: () => openSeq(S.last.path, { dir: src.dir, pattern: src.pattern }, true) }, svg("refresh"), "Re-scan files")));
+      src.local ? el("p", { class: "muted small" }, "Read in this browser from the files you picked; nothing was uploaded. Pick the folder again to see new frames.")
+        : el("button", { class: "btn", type: "button", "data-tip": "Index the folder again (new frames written by a running job)", onclick: () => openSeq(S.last.path, { dir: src.dir, pattern: src.pattern }, true) }, svg("refresh"), "Re-scan files")));
     const types = frame?.meta.types || [];
     p.append(sec("Atom types",
       el("table", { class: "data compact" }, el("thead", {}, el("tr", {}, el("th", {}, "Type"), el("th", {}, "Colour"), el("th", { class: "num" }, "Radius Å"), el("th", { class: "num" }, "Atoms"))),
