@@ -13,6 +13,7 @@ import { browserSource } from "../studio/source.js";
 import { pickCodec, mp4Writer } from "../studio/movie.js";
 import { buildFramesPanel, exportDefaults } from "./ovito_frames.js";
 import { openHpc } from "./ovito_hpc.js";
+import { buildDbtPanel, dbtDefaults } from "./ovito_dbt.js";
 
 const KEY = "nanocut.ovito.v2";
 const MODS = [
@@ -51,7 +52,7 @@ const VIEW_TIP = {
 const CHUNK = 8 << 20;                                                 // upload chunk (bytes)
 
 const defaults = () => ({
-  last: null, recent: [], frame: 0, types: {}, cell: true, live: true, fps: 10, export: exportDefaults(),
+  last: null, recent: [], frame: 0, types: {}, cell: true, live: true, fps: 10, export: exportDefaults(), dbt: dbtDefaults(),
   modifiers: [],
   viewport: { proj: "ortho", view: "Top", preview: false },
   render: { w: 1600, h: 1000, bg: "#ffffff", alpha: false, renderer: "tachyon", aa_gl: 3, aa: 12, ao: true, shadows: false,
@@ -67,7 +68,7 @@ function load(raw) {
   for (const k of ["viewport", "render"]) d[k] = { ...d[k], ...(s[k] || {}) };
   d.render.anim = { ...defaults().render.anim, ...(s.render?.anim || {}) };
   d.overlays = { legend: { ...d.overlays.legend, ...(s.overlays?.legend || {}) }, tripod: { ...d.overlays.tripod, ...(s.overlays?.tripod || {}) }, labels: s.overlays?.labels || [] };
-  for (const k of ["last", "recent", "frame", "types", "cell", "modifiers", "live", "fps", "export"]) if (s[k] !== undefined) d[k] = s[k];
+  for (const k of ["last", "recent", "frame", "types", "cell", "modifiers", "live", "fps", "export", "dbt"]) if (s[k] !== undefined) d[k] = s[k];
   d.modifiers = (d.modifiers || []).filter(m => MOD_LABEL[m.type]);
   return d;
 }
@@ -111,9 +112,16 @@ export async function render(root) {
   const pathList = el("datalist", { id: "ov-paths" });
   const seqSel = el("select", { class: "select seq", "aria-label": "Trajectory", hidden: true });
   const srcInfo = el("span", { class: "st-src muted" });
-  const bar = el("div", { class: "st-bar" }, svg("folder"),
+  const hosted = api.apiHosted();
+  // local backend: files are read where they are (the backend shows the system dialog and gets the real path, so
+  // nothing is copied); hosted: files are uploaded to the server's private store
+  const openButtons = hosted ? [
     el("button", { class: "btn primary", type: "button", "data-tip": "Upload dump files from this computer to the OVITO server (kept 24 h)", onclick: () => pickFiles.click() }, "Upload files…"),
-    el("button", { class: "btn", type: "button", "data-tip": "Upload a folder of dumps (searched two levels deep)", onclick: () => pickDir.click() }, "Upload folder…"),
+    el("button", { class: "btn", type: "button", "data-tip": "Upload a folder of dumps (searched two levels deep)", onclick: () => pickDir.click() }, "Upload folder…")] : [
+    el("button", { class: "btn primary", type: "button", "data-tip": "Choose a folder on this computer; OVITO reads the dumps in place (nothing is copied)", onclick: () => localPick("folder") }, "Open folder…"),
+    el("button", { class: "btn", type: "button", "data-tip": "Choose one multi-frame dump or several frame files; read in place", onclick: () => localPick("files") }, "Open file(s)…"),
+    el("button", { class: "btn ghost", type: "button", "data-tip": "Browse the folders of this computer inside the page (if no dialog appears)", onclick: () => browseLocal(S.lastDir || "") }, "Browse…")];
+  const bar = el("div", { class: "st-bar" }, svg("folder"), ...openButtons,
     api.apiHosted() ? null : el("button", { class: "btn", type: "button", "data-tip": "Connect to an HPC cluster over SSH and open dumps that stay there", onclick: () => openHpc((source, label) => open(source, { ...source, label })) }, "HPC…"),
     pickFiles, pickDir, pathIn, pathList, el("button", { class: "btn", type: "button", onclick: () => scan(pathIn.value) }, "Open path"), seqSel, srcInfo);
   const glc = el("canvas", { class: "gl", "aria-hidden": "true" });
@@ -132,7 +140,7 @@ export async function render(root) {
   try { R = new AtomRenderer(glc); } catch (e) { clear(stage).append(errorState(e)); return; }
 
   // ---------------------------------------------------------------------------------------------- state
-  let src = null, info = null, fi = 0, frame = null, cam = null, scene = { center: [0, 0, 0], radius: 100 };
+  let src = null, info = null, fi = 0, frame = null, cam = null, scene = { center: [0, 0, 0], radius: 100 }, regimeMap = null;
   let playing = false, loadTok = 0, alive = true, raf = 0, picked = null;
   const cache = new Map();                                             // frame -> promise of {meta, pos, col, rad, lines}
 
@@ -142,7 +150,40 @@ export async function render(root) {
   function idle() { overlayState.hidden = true; clear(overlayState); busyNode = null; }
 
   // ---------------------------------------------------------------------------------------------- sources
-  async function scan(path) {
+  /** local backend: the system dialog runs on this computer and returns real paths, which are opened in place */
+  async function localPick(kind) {
+    let r;
+    try { r = (await api.post("/api/local/pick", { kind, start: S.lastDir || "" }, 1800000)).body; }
+    catch (e) { if (e.status === 501) { toast("No system dialog available here: browse inside the page instead.", "warn"); browseLocal(S.lastDir || ""); } else toast(e.message, "err"); return; }
+    const paths = kind === "folder" ? (r.path ? [r.path] : []) : r.paths || [];
+    if (!paths.length) return;                                         // cancelled
+    const dir = kind === "folder" ? paths[0] : paths[0].replace(/[\\/][^\\/]*$/, "");
+    S.lastDir = dir; save();
+    if (kind === "folder" || paths.length > 1) { pathIn.value = dir; return scan(dir, paths.length > 1 ? paths.map(p => p.split(/[\\/]/).pop()) : null); }
+    pathIn.value = paths[0]; scan(paths[0]);
+  }
+  /** fallback: folders of this computer listed by the local backend */
+  async function browseLocal(path) {
+    const body = el("div", { class: "panel-body grid1", style: { maxHeight: "70vh", overflow: "auto" } });
+    const back = el("div", { class: "modal-backdrop open", role: "dialog", "aria-modal": "true", "aria-label": "Folders on this computer" },
+      el("div", { class: "modal wide" }, el("div", { class: "panel-head" }, el("h3", {}, "Folders on this computer"), el("span", { class: "sub" }, "dumps are read in place, nothing is copied"),
+        el("div", { class: "actions" }, el("button", { class: "btn", type: "button", onclick: () => back.remove() }, "Close"))), body));
+    document.body.append(back);
+    const go = async p => {
+      clear(body).append(loading("Listing…"));
+      let L;
+      try { L = await api.get(`/api/local/list?path=${encodeURIComponent(p)}`); } catch (e) { clear(body).append(errorState(e)); return; }
+      clear(body).append(
+        el("div", { class: "field-row" }, el("b", { class: "mono" }, L.path || "This computer"),
+          L.parent != null ? el("button", { class: "btn", type: "button", onclick: () => go(L.parent) }, "Up") : null,
+          L.path ? el("button", { class: "btn primary", type: "button", onclick: () => { back.remove(); S.lastDir = L.path; save(); pathIn.value = L.path; scan(L.path); } }, "Open this folder") : null),
+        L.files.length ? el("p", { class: "muted small" }, `${num(L.files.length)} dump-like files here (${bytes(L.files.reduce((t, f) => t + f.bytes, 0))})`) : null,
+        el("div", { class: "chips" }, L.dirs.map(d => el("button", { class: "chip", type: "button", onclick: () => go(L.path ? `${L.path.replace(/[\\/]$/, "")}\\${d}` : d) }, L.path ? `${d}\\` : d))));
+    };
+    go(path);
+  }
+
+  async function scan(path, names) {
     path = (path || "").trim().replace(/^"|"$/g, "");
     if (!path) { toast("Enter a folder or dump file the server can read, or upload files.", "warn"); return; }
     busy("Looking for LAMMPS dump files…");
@@ -150,7 +191,12 @@ export async function render(root) {
     try { r = await api.get(`/api/studio/scan?path=${encodeURIComponent(path)}`); }
     catch (e) { idle(); return showState(errorState(e)); }
     if (!r.sequences.length) { idle(); return showState(el("div", { class: "state err" }, el("b", {}, "No LAMMPS dump found"), el("span", {}, r.path))); }
-    pickSeq(r.sequences, seq => open({ path: seq.dir, pattern: seq.pattern }, { path, dir: seq.dir, pattern: seq.pattern }));
+    let seqs = r.sequences;
+    if (names?.length) {                                                // files picked in a folder: their sequence first
+      const hit = seqs.filter(q => names.some(n => new RegExp("^" + q.pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace("\\*", "\\d+") + "$").test(n)));
+      seqs = [...hit, ...seqs.filter(q => !hit.includes(q))];
+    }
+    pickSeq(seqs, seq => open({ path: seq.dir, pattern: seq.pattern }, { path, dir: seq.dir, pattern: seq.pattern }));
   }
   function pickSeq(seqs, go) {
     clear(seqSel);
@@ -499,10 +545,12 @@ export async function render(root) {
     if (!frame) { hud.hidden = true; return; }
     hud.hidden = false;
     const s = frame.meta.seconds;
-    hud.append(el("b", {}, S.last?.label || `${S.last?.dir?.split(/[\\/]/).pop() || ""}/${S.last?.pattern || ""}`),
+    hud.append(...[el("b", {}, S.last?.label || `${S.last?.dir?.split(/[\\/]/).pop() || ""}/${S.last?.pattern || ""}`),
       el("span", {}, `Frame ${fi} · step ${num(frame.meta.step)} · ${num(frame.meta.layout.n_total)} particles after the OVITO pipeline · OVITO ${s.compute} s`),
+      regimeMap?.has(fi) ? el("span", { class: `dbt-badge ${regimeMap.get(fi).regime}` }, regimeMap.get(fi).regime === "brittle" ? `BRITTLE · ${regimeMap.get(fi).why.join("; ")}` : "DUCTILE · no crack, void or chip fragmentation")
+        : regimeMap ? el("span", { class: "muted" }, "regime: frame not analysed") : null,
       frame.meta.layout.encoding === "q16" ? el("span", { class: "acc" }, `Hosted display: positions to ±${frame.meta.layout.precision_A.toFixed(3)} Å${frame.meta.layout.stride > 1 ? `, 1 in ${frame.meta.layout.stride} particles shown (${num(frame.meta.layout.n)})` : ""}; all numbers, picking and renders use OVITO's full data.`) : null,
-      ...(msg ? [el("span", { class: "acc" }, msg)] : []));
+      ...(msg ? [el("span", { class: "acc" }, msg)] : [])].filter(Boolean));   // (append() would print null)
   }
 
   // ---------------------------------------------------------------------------------------------- timeline
@@ -540,10 +588,15 @@ export async function render(root) {
   function stop() { playing = false; playBtn.replaceChildren(svg("play")); playBtn.setAttribute("aria-label", "Play"); }
 
   // ---------------------------------------------------------------------------------------------- side panels
-  const T = tabs([{ id: "pipeline", label: "Pipeline" }, { id: "render", label: "Render" }, { id: "frames", label: "Frames & export" }, { id: "results", label: "Results" }, { id: "more", label: "More" }], id => refreshSide(id));
+  const T = tabs([{ id: "pipeline", label: "Pipeline" }, { id: "render", label: "Render" }, { id: "frames", label: "Export" }, { id: "dbt", label: "Ductile–brittle" }, { id: "results", label: "Results" }, { id: "more", label: "More" }], id => refreshSide(id));
   side.append(T.bar, ...Object.values(T.panels));
   const builders = { pipeline: buildPipeline, render: buildRender, results: buildResults, more: buildMore,
-    frames: p => buildFramesPanel(p, { S, save, info: () => info, spec: () => spec(fi), frameMeta: () => frame?.meta }) };
+    frames: p => buildFramesPanel(p, { S, save, info: () => info, spec: () => spec(fi), frameMeta: () => frame?.meta }),
+    dbt: p => buildDbtPanel(p, { S, save, info: () => info, spec: () => spec(fi), setRegime: m => { regimeMap = m; setHud(); },
+      showDamage: types => {                                            // tool removed, structure types coloured: damage visible while playing
+        S.modifiers = [{ type: "select_type", types: [...types], enabled: true }, { type: "delete_selected", enabled: true }, { type: "identify_diamond", enabled: true }];
+        refreshSide("pipeline"); cache.clear(); changed(); if (!S.live) loadFrame(fi);
+      } }) };
   function buildSide() { for (const id of Object.keys(builders)) refreshSide(id, true); }
   function refreshSide(id, force) {
     for (const k of id ? [id] : Object.keys(builders)) { const p = T.panels[k]; if (force || !p.hidden) { clear(p); builders[k](p); } }
@@ -793,8 +846,10 @@ export async function render(root) {
   buildSide();
   resize();
   showState(el("div", { class: "state st-start" }, el("b", {}, `OVITO ${st.ovito} · live 3D`),
-    el("span", {}, "Upload dump files from this computer (they go to the OVITO server, nothing else is stored), or open a folder / file the server can read. OVITO then computes every frame; rotate, zoom and play it here, and let OVITO render the final image or movie."),
-    el("div", { class: "field-row" }, el("button", { class: "btn primary", type: "button", onclick: () => pickFiles.click() }, "Upload files…"), el("button", { class: "btn", type: "button", onclick: () => pickDir.click() }, "Upload folder…")),
+    el("span", {}, hosted ? "Upload dump files from this computer to the OVITO server (private, deleted after a day). OVITO then computes every frame; rotate, zoom and play it here, and let OVITO render the final image or movie."
+      : "Open a folder or dump files on this computer: OVITO reads them where they are, nothing is copied. OVITO then computes every frame; rotate, zoom and play it here, and let OVITO render the final image or movie."),
+    el("div", { class: "field-row" }, ...(hosted ? [el("button", { class: "btn primary", type: "button", onclick: () => pickFiles.click() }, "Upload files…"), el("button", { class: "btn", type: "button", onclick: () => pickDir.click() }, "Upload folder…")]
+      : [el("button", { class: "btn primary", type: "button", onclick: () => localPick("folder") }, "Open folder…"), el("button", { class: "btn", type: "button", onclick: () => localPick("files") }, "Open file(s)…")])),
     runs.length ? el("div", { class: "chips" }, runs.map(path => el("button", { class: "chip", type: "button", onclick: () => { pathIn.value = path; scan(path); } }, path))) : null));
   if (S.last?.path) scan(S.last.path);
   else if (S.last?.upload && !api.apiHosted()) open({ upload: S.last.upload, pattern: S.last.pattern }, S.last).catch(() => {});

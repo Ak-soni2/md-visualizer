@@ -226,3 +226,9 @@ table.data.compact .input { width: 76px; }
 .ov-table { max-height: 420px; }
 .ov-right .mod-status, .ov-left .mod-status { color: var(--text-2); font-family: var(--font-sans); }
 @media (max-width: 1000px) { .ov-grid { grid-template-columns: 1fr; } .ov-left { position: static; max-height: none; } }
+
+/* ductile-brittle regime */
+.dbt-badge { font-weight: 600; padding: 1px 6px; border-radius: 3px; }
+.dbt-badge.ductile { color: #0b2a1e; background: #5fae8b; }
+.dbt-badge.brittle { color: #2a0d09; background: #df6b5d; }
+tr.dbt-brittle td { background: rgba(223, 107, 93, 0.10); }

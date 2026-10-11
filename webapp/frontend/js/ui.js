@@ -4,6 +4,7 @@ import * as api from "./api.js";
 export function el(tag, attrs = {}, ...kids) {
   const n = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
+    if (k.startsWith("aria-") && typeof v === "boolean") { n.setAttribute(k, String(v)); continue; }   // aria-pressed="true"/"false"
     if (v === null || v === undefined || v === false) continue;
     if (k === "class") n.className = v;
     else if (k === "html") n.innerHTML = v;

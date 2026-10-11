@@ -99,6 +99,15 @@ export function buildFramesPanel(p, ctx) {
 
   async function run(csv) {
     if (running || sel.errors.length) return;
+    const tag0 = E.mode === "interval" ? `interval_${E.interval}` : E.mode === "range" ? `range_${E.start}-${E.end ?? n - 1}_step_${E.step}` : `custom_${sel.frames.length}`;
+    let saveTo = null;
+    if (csv && !api.apiHosted()) {                                      // local: the ZIP is written where you choose, no temporary copy
+      try {
+        const r = (await api.post("/api/local/pick", { kind: "save", name: `simulation_frames_${tag0}.zip`, start: ctx.S.lastDir || "" }, 1800000)).body;
+        if (!r.path) return;                                            // cancelled
+        saveTo = r.path;
+      } catch (e) { if (e.status !== 501) { toast(e.message, "err"); return; } }   // no dialog: download from the server instead
+    }
     running = true; update();
     token = Math.random().toString(16).slice(2) + Date.now().toString(16);
     const box = loading(csv ? `OVITO writes ${sel.frames.length} CSV files…` : `OVITO computes ${sel.frames.length} frames…`, true);
@@ -106,7 +115,7 @@ export function buildFramesPanel(p, ctx) {
     clear(status).append(box, el("button", { class: "btn ghost", type: "button", onclick: () => { cancelled = true; api.post(`/api/ovito/frames/cancel/${token}`).catch(() => {}); } }, "Cancel"));
     const selection = { mode: E.mode, ...(E.mode === "interval" ? { interval: E.interval } : E.mode === "range" ? { start: E.start, end: E.end ?? n - 1, step: E.step } : { list: E.list }) };
     const tag = E.mode === "interval" ? `interval_${E.interval}` : E.mode === "range" ? `range_${E.start}-${E.end ?? n - 1}_step_${E.step}` : `custom_${sel.frames.length}`;
-    const body = f => ({ spec: ctx.spec(), frames: f, apply_pipeline: E.apply, include_derived: E.derived, csv, stats: !csv, token });
+    const body = f => ({ spec: ctx.spec(), frames: f, apply_pipeline: E.apply, include_derived: E.derived, csv, stats: !csv, token, save_to: saveTo });
     try {
       let r;
       if (!api.apiHosted()) {
@@ -133,7 +142,10 @@ export function buildFramesPanel(p, ctx) {
         if (zip) { r.blob = zip.finish(); r.bytes = r.blob.size; }
       }
       clear(status);
-      if (csv) {
+      if (csv && r.saved_to) {
+        status.append(el("div", { class: "banner" }, `${r.rows.length} frames exported to `, el("code", {}, r.saved_to), ` (${bytes(r.bytes)}, ${r.rows[0].columns.length} columns each, OVITO ${r.meta.seconds} s).`));
+        toast(`ZIP with ${r.rows.length} CSV files saved.`, "ok");
+      } else if (csv) {
         const a = el("a", { href: r.blob ? URL.createObjectURL(r.blob) : api.resultUrl(r.url), download: `simulation_frames_${tag}.zip` });
         document.body.append(a); a.click(); a.remove();
         if (r.blob) setTimeout(() => URL.revokeObjectURL(a.href), 60000);

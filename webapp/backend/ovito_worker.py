@@ -394,7 +394,120 @@ def op_frame_table(req):
     return out
 
 
+# ------------------------------------------------------------------------------------------------ ductile / brittle indicators
+_surface_level = {}                          # source -> original surface height (frame 0, tool removed)
+DIAMOND_LABEL = ["other", "cubic diamond", "cubic diamond (1st neighbour)", "cubic diamond (2nd neighbour)",
+                 "hexagonal diamond", "hexagonal diamond (1st neighbour)", "hexagonal diamond (2nd neighbour)"]
+
+
+def _raw_pipeline(src):
+    from ovito.pipeline import Pipeline
+    k = (src["import_path"], bool(src.get("multiple_frames")))
+    if k not in _raw:
+        _raw[k] = Pipeline(source=cached_pipeline(*k).source)
+    return _raw[k]
+
+
+def _top_median(x, z, y, cell=10.0):
+    """Median over cell x cell columns (in x, z) of the highest atom per column: the free surface height."""
+    if not len(y):
+        return None
+    key = np.floor(x / cell).astype(np.int64) * 1_000_003 + np.floor(z / cell).astype(np.int64)
+    order = np.lexsort((-y, key))
+    first = np.r_[True, key[order][1:] != key[order][:-1]]
+    return float(np.median(y[order][first]))
+
+
+def op_regime(req):
+    """Indicators of ductile vs brittle material removal for one frame, computed by OVITO in a zone around the tool.
+    Axes: cutting along x, surface normal y (NanoCut decks); the tool is the given particle type(s)."""
+    from ovito.modifiers import ClusterAnalysisModifier, ConstructSurfaceModifier, IdentifyDiamondModifier
+    from ovito.pipeline import Pipeline, StaticSource
+    src, frame, prm = req["spec"]["source"], int(req["frame"]), req["params"]
+    pl = _raw_pipeline(src)
+    tool_types = [int(t) for t in prm.get("tool_types") or []]
+    R, ahead, behind = float(prm.get("probe_radius", 3.0)), float(prm.get("ahead", 30)), float(prm.get("behind", 60))
+    data = pl.compute(frame)
+    P = data.particles
+    pos = np.asarray(P.positions, dtype=np.float64)
+    typ = np.asarray(P.particle_types) if P.particle_types is not None else np.ones(P.count, int)
+    tool = np.isin(typ, tool_types)
+    if not tool.any():
+        raise ValueError(f"no particles of the tool type(s) {tool_types} in frame {frame}")
+    wp = ~tool
+    sign = -1.0 if prm.get("direction", "-x") == "-x" else 1.0           # tool moves towards -x (NanoCut) or +x
+    tip = float(pos[tool, 0].min() if sign < 0 else pos[tool, 0].max())  # cutting edge: leading tool atom
+    tool_bottom = float(pos[tool, 1].min())
+    key = (src["import_path"], tuple(tool_types))
+    if key not in _surface_level:                                         # original surface: frame 0, tool removed
+        d0 = pl.compute(0)
+        p0, t0 = np.asarray(d0.particles.positions, dtype=np.float64), np.asarray(d0.particles.particle_types)
+        w0 = ~np.isin(t0, tool_types)
+        _surface_level[key] = _top_median(p0[w0, 0], p0[w0, 2], p0[w0, 1])
+    ys = _surface_level[key]
+    # zone: from `ahead` in front of the cutting edge to `behind` it (the freshly machined surface), full height
+    lo, hi = (tip - ahead, tip + behind) if sign < 0 else (tip - behind, tip + ahead)
+    pad = 2 * R + 6.0                                                     # neighbours and surface mesh need a margin
+    x = pos[:, 0]
+    in_pad = wp & (x >= lo - pad) & (x <= hi + pad)
+    dc = data.clone()
+    dc.particles_.delete_elements(~in_pad)
+    zpos = pos[in_pad]
+    inner = (zpos[:, 0] >= lo) & (zpos[:, 0] <= hi)
+    zp = Pipeline(source=StaticSource(data=dc))
+    zp.modifiers.append(IdentifyDiamondModifier())
+    zp.modifiers.append(ConstructSurfaceModifier(radius=R, identify_regions=True, select_surface_particles=True))
+    zd = zp.compute()
+    st = np.asarray(zd.particles["Structure Type"])
+    surf = np.asarray(zd.particles["Selection"]) != 0
+    # interior = not on a free surface: surface atoms always look disordered (incomplete neighbour shells)
+    interior = inner & ~surf
+    n_in = int(interior.sum())
+    counts = {DIAMOND_LABEL[i] if i < len(DIAMOND_LABEL) else str(i): int(((st == i) & interior).sum()) for i in np.unique(st[interior])} if n_in else {}
+    other = int(((st == 0) & interior).sum())
+    wp_bottom, wp_x0, wp_x1 = float(pos[wp, 1].min()), float(pos[wp, 0].min()), float(pos[wp, 0].max())
+    margin, bottom_margin, side = float(prm.get("crack_margin", 4.0)), float(prm.get("bottom_margin", 10.0)), float(prm.get("side_margin", 10.0))
+    # the workpiece's own outer faces (bottom, x ends) are free surfaces at every depth: never crack faces
+    body = (zpos[:, 1] > wp_bottom + bottom_margin) & (zpos[:, 0] > wp_x0 + side) & (zpos[:, 0] < wp_x1 - side)
+    deep = inner & surf & body & (zpos[:, 1] < tool_bottom - margin)
+    reg = zd.surfaces["surface"].regions
+    filled, ext, vol = (np.asarray(reg[k]) for k in ("Filled", "Exterior", "Volume"))
+    vmin = float(prm.get("void_min_volume", 30.0))
+    voids = (filled == 0) & (ext == 0) & np.isfinite(vol) & (vol >= vmin)
+    # behind the cutting edge, below the tool: deepest disordered ("other") atom = subsurface damage depth
+    behind_edge = (zpos[:, 0] - tip) * sign < 0                           # already passed by the tool (x > tip when moving -x)
+    dmg = interior & body & behind_edge & (st == 0) & (zpos[:, 1] < tool_bottom)
+    damage_depth = float(tool_bottom - zpos[dmg, 1].min()) if dmg.any() else 0.0
+    # chip: workpiece atoms above the original surface, split into connected clusters
+    chip_thr, cut, min_frag = float(prm.get("chip_threshold", 1.0)), float(prm.get("cluster_cutoff", 3.0)), int(prm.get("min_fragment", 20))
+    above = wp & (pos[:, 1] > ys + chip_thr)
+    sizes = []
+    if above.any():
+        cd = data.clone()
+        cd.particles_.delete_elements(~above)
+        cp = Pipeline(source=StaticSource(data=cd))
+        cp.modifiers.append(ClusterAnalysisModifier(cutoff=cut, sort_by_size=True))
+        cdd = cp.compute()
+        sizes = sorted(np.bincount(np.asarray(cdd.particles["Cluster"]))[1:].tolist(), reverse=True)
+    frags = [s for s in sizes if s >= min_frag]
+    out = dict(frame=frame, step=_jsonable(data.attributes.get("Timestep")), tip_x=tip, tool_bottom_y=tool_bottom, surface_y=ys,
+               depth_of_cut=float(ys - tool_bottom) if ys is not None else None, zone=[lo, hi], zone_atoms=int(inner.sum()),
+               interior_atoms=n_in, structure=counts, disordered=other, disordered_fraction=other / n_in if n_in else None,
+               deep_surface_atoms=int(deep.sum()), voids=int(voids.sum()), void_volume=float(vol[voids].sum()),
+               surface_area=float(zd.attributes.get("ConstructSurfaceMesh.surface_area", 0.0)),
+               chip_atoms=int(above.sum()), chip_fragments=len(frags), chip_sizes=frags[:8], chip_debris=int(sum(s for s in sizes if s < min_frag)),
+               damage_depth=damage_depth)
+    if "Force" in P:
+        F = np.asarray(P["Force"], dtype=np.float64)[tool]
+        ok = np.isfinite(F).all(1)
+        tot = F[ok].sum(0)
+        fc, ft = abs(float(tot[0])), abs(float(tot[1]))
+        out.update(force_cutting=fc, force_thrust=ft, force_ratio=ft / fc if fc > 0 else None, force_vector=[float(v) for v in tot])
+    return out
+
+
 OPS = {"hello": lambda r: dict(ovito=ovito.version_string, pid=os.getpid()), "info": op_info, "run": op_run, "frame_table": op_frame_table,
+       "regime": op_regime,
        "export": op_export, "displacements": op_displacements, "live": op_live, "atom": op_atom}
 
 for line in sys.stdin:

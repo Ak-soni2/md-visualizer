@@ -5,7 +5,12 @@ geometry, depth, speed, ...) and get the two LAMMPS input decks **A** (build + e
 (restart → cut) that follow the structure of the reference decks in `C:\BTP\Cutting`, plus a geometry preview with exact
 atom counts, an in-LAMMPS validation, an optional reduced-scale real MD preview, and an OVITO-style results visualizer.
 
-## Run the UI
+## Start everything (any computer)
+
+Double-click **`START.bat`** (Windows) or run `bash start.sh` (Linux/macOS): it installs what is needed into `.venv` and
+opens the web workstation at http://127.0.0.1:8600/app/ (details: `webapp/README.md`).
+
+## Run the Streamlit UI
 
 ```bash
 pip install -r requirements.txt

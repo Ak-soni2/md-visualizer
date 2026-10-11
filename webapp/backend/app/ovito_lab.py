@@ -327,6 +327,12 @@ def frames_job(body: dict = Body(...)):
         raise HTTPException(422, f"at most {MAX_FRAMES} frames per export")
     token = str(body.get("token") or uuid.uuid4().hex)
     src = spec["source"]
+    save_to = None
+    if body.get("save_to") and want_csv and not HOSTED:       # a path from the local Save-as dialog
+        save_to = Path(str(body["save_to"]))
+        if not save_to.is_absolute() or save_to.suffix.lower() != ".zip" or not save_to.parent.is_dir():
+            raise HTTPException(422, "save_to must be an absolute path of a .zip file in an existing folder")
+        save_to.unlink(missing_ok=True)                        # the dialog already asked before replacing it
 
     def run(progress=None):
         _prep(src, [0], progress)
@@ -337,6 +343,7 @@ def frames_job(body: dict = Body(...)):
             raise ValueError(f"frames outside 0 … {n - 1}: {bad[:20]}{' …' if len(bad) > 20 else ''}")
         dump_cols = _dump_columns(src)
         zip_name = f"frames_{uuid.uuid4().hex[:10]}.zip" if want_csv and not HOSTED else None
+        zip_file = save_to or (OUT_DIR / zip_name if zip_name else None)     # local: straight to the chosen file
         rows, t0 = [], time.time()
         try:
             for k, f in enumerate(frames):
@@ -350,14 +357,14 @@ def frames_job(body: dict = Body(...)):
                 row = worker.ask({"op": "frame_table", "spec": spec, "frame": f, "apply_pipeline": bool(body.get("apply_pipeline")),
                                   "include_derived": bool(body.get("include_derived")), "dump_columns": dump_cols,
                                   "raw_properties": info["properties"], "stats": want_stats,
-                                  "zip_path": str(OUT_DIR / zip_name) if zip_name else None, "csv_path": str(csv_path) if csv_path else None})
+                                  "zip_path": str(zip_file) if zip_file else None, "csv_path": str(csv_path) if csv_path else None})
                 if csv_path:
                     row["csv_bytes"] = csv_path.stat().st_size
                     row["csv_url"] = _out_url(csv_path, "text/csv")
                 rows.append(row)
         except Exception:
-            if zip_name:
-                (OUT_DIR / zip_name).unlink(missing_ok=True)
+            if zip_file:
+                Path(zip_file).unlink(missing_ok=True)
             raise
         finally:
             _cancel.discard(token)
@@ -366,10 +373,58 @@ def frames_job(body: dict = Body(...)):
                     apply_pipeline=bool(body.get("apply_pipeline")), include_derived=bool(body.get("include_derived")),
                     modifiers=[m.get("type") for m in spec.get("modifiers") or [] if m.get("enabled", True)] if body.get("apply_pipeline") else [],
                     ovito=worker.info.get("ovito") if worker.info else None, seconds=round(time.time() - t0, 2))
-        return dict(zip=zip_name, url=f"/api/ovito/file/{zip_name}" if zip_name else None,
-                    bytes=(OUT_DIR / zip_name).stat().st_size if zip_name else sum(r.get("csv_bytes", 0) for r in rows), rows=rows, meta=meta)
+        return dict(zip=zip_name, url=None if save_to or not zip_name else f"/api/ovito/file/{zip_name}", saved_to=str(save_to) if save_to else None,
+                    bytes=Path(zip_file).stat().st_size if zip_file else sum(r.get("csv_bytes", 0) for r in rows), rows=rows, meta=meta)
     key = hashlib.sha1(json.dumps([frames, body.get("apply_pipeline"), body.get("include_derived"), want_csv, want_stats]).encode()).hexdigest()[:12]
     return _job(f"ovito-frames:{token}:{key}", "OVITO exports frames" if want_csv else "OVITO computes frame statistics", run)
+
+
+REGIME_PARAMS = {"probe_radius": (1.0, 10.0), "ahead": (0.0, 2000.0), "behind": (0.0, 2000.0), "crack_margin": (0.0, 50.0),
+                 "bottom_margin": (0.0, 200.0), "side_margin": (0.0, 500.0), "void_min_volume": (0.0, 1e6), "chip_threshold": (0.0, 50.0), "cluster_cutoff": (1.0, 10.0),
+                 "min_fragment": (1, 1e7)}
+
+
+@router.post("/regime")
+def regime_job(body: dict = Body(...)):
+    """Ductile/brittle indicators for the selected frames (ovito_worker.op_regime). body: {spec, frames, params, token}."""
+    try:
+        spec = _spec(body)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    try:
+        frames = sorted({int(f) for f in body.get("frames") or []})
+    except (TypeError, ValueError):
+        raise HTTPException(422, "frames must be integers")
+    if not frames or len(frames) > MAX_FRAMES:
+        raise HTTPException(422, "select between 1 and 100000 frames")
+    raw = body.get("params") or {}
+    prm = {"tool_types": [int(t) for t in raw.get("tool_types") or []], "direction": "+x" if raw.get("direction") == "+x" else "-x"}
+    if not prm["tool_types"]:
+        raise HTTPException(422, "choose the particle type(s) of the tool")
+    for k, (lo, hi) in REGIME_PARAMS.items():
+        if raw.get(k) is not None:
+            v = float(raw[k])
+            if not lo <= v <= hi:
+                raise HTTPException(422, f"{k} must be within {lo} … {hi}")
+            prm[k] = v
+    token, src = str(body.get("token") or uuid.uuid4().hex), spec["source"]
+
+    def run(progress=None):
+        rows, t0 = [], time.time()
+        try:
+            for k, f in enumerate(frames):
+                if token in _cancel:
+                    raise RuntimeError(f"cancelled after {k} of {len(frames)} frames")
+                if progress:
+                    eta = (time.time() - t0) / k * (len(frames) - k) if k else None
+                    progress(k / len(frames), f"frame {f} ({k + 1} of {len(frames)})" + (f", about {eta:.0f} s left" if eta else ""))
+                _prep(src, [f])
+                rows.append(worker.ask({"op": "regime", "spec": spec, "frame": f, "params": prm}))
+        finally:
+            _cancel.discard(token)
+        return dict(rows=rows, params=prm, seconds=round(time.time() - t0, 2), source=src.get("label"))
+    key = hashlib.sha1(json.dumps([frames, prm]).encode()).hexdigest()[:12]
+    return _job(f"ovito-regime:{token}:{key}", "OVITO computes ductile/brittle indicators", run)
 
 
 @router.post("/frames/cancel/{token}")

@@ -4,23 +4,36 @@ A scientific web interface for the NanoCut project: HTML5 + CSS3 + vanilla JavaS
 backend that reuses the existing `nanocut` engine through thin adapters. The Streamlit app (`ui/app.py`) is unchanged
 and still available.
 
-## Run it
+## Run it (any computer)
 
+Copy the whole `md-visulaizer` folder, then double-click **`START.bat`** (Windows) or run `bash start.sh`
+(Linux/macOS). It finds Python 3.12 (Windows: installs it with winget if missing), rebuilds `.venv` when it was copied
+from another computer, installs the packages of `requirements.txt` + `webapp/backend/requirements.txt` (first start: a
+few minutes, ~1 GB with OVITO; afterwards only when those files change), starts the server and opens
+http://127.0.0.1:8600/app/ . API docs: http://127.0.0.1:8600/docs . `set PORT=8700` before START.bat changes the port.
+
+Hosted version: https://md-simulator.vercel.app (see *Deployment*).
+
+Checks (all against real or synthetic data with known answers):
 ```bat
-webapp\run_web.bat
+.venv\Scripts\python webapp\backend\selfcheck.py          :: 52 API checks on the project data
+.venv\Scripts\python webapp\tools\check_dump_reader.py    :: browser dump reader = backend reader (needs Node.js)
+.venv\Scripts\python webapp\tools\check_regime.py         :: ductile/brittle indicators on synthetic defects
+.venv\Scripts\python webapp\tools\check_remote.py         :: HPC connection against a test SFTP server
 ```
-then open http://127.0.0.1:8600 (interactive API docs at http://127.0.0.1:8600/docs). Linux/macOS: `webapp/run_web.sh`.
-It uses the project's `.venv`; FastAPI and uvicorn are installed into it on first start if missing
-(`webapp/backend/requirements.txt`).
 
-Hosted version (frontend + API on Vercel): https://md-visualizer-mauve.vercel.app (see *Deployment*).
+## Where the dump files are (storage)
 
-Self-check of the API against the real project data (47 checks), and of the browser's dump reader against the
-backend's (needs Node.js):
-```bat
-.venv\Scripts\python webapp\backend\selfcheck.py
-.venv\Scripts\python webapp\tools\check_dump_reader.py
-```
+| How you open dumps | Where they are read from | Extra disk used |
+|---|---|---|
+| OVITO page, local: **Open folder… / Open file(s)… / Browse… / Open path** | where they are on your disk (the local backend shows the system dialog and uses the real path) | none |
+| Studio page: **Open folder… / Open files…** | read by the browser directly from your disk | none |
+| OVITO page, **HPC…** | stay on the cluster; each frame is fetched when OVITO computes it | at most 4 frames + frame 0 in `%TEMP%\nanocut_ovito\remote` (`NANOCUT_REMOTE_CACHE`), deleted on disconnect |
+| Hosted site: **Upload files…** | private Vercel Blob store of the project | in the cloud, deleted after 24 h; nothing on your PC |
+
+Results: images/exports go to `%TEMP%\nanocut_ovito` (latest 60 kept). The frame-export ZIP is written directly to the
+file you choose in the Save dialog (no temporary copy). Uploading to the local server (`/api/ovito/upload`) still
+exists for scripts but the page no longer uses it.
 
 ## What the interface does
 
@@ -117,6 +130,51 @@ loading two frames; 64 s for a 1600 × 1000 Tachyon image with ambient occlusion
 Images and exports go to the system temporary folder (`%TEMP%\nanocut_ovito`, latest 60 kept), never into the project or
 data folders. If `ovito` is missing, the page shows the install command.
 
+## Frames & export (OVITO page, "Export" tab)
+
+Frames by interval (0, k, 2k …), range (start, end, step) or a list (`0, 7, 20-600:30`), validated against the
+loaded trajectory, duplicates removed, sorted. **Download CSVs as ZIP**: one CSV per frame with every particle column
+under its dump name (`id, type, x, y, z, fx, fy, fz, c_pe …`), values exactly as read (checked against pandas); columns
+OVITO derives (e.g. Velocity Magnitude) only on request; with *Apply the OVITO pipeline* the data after the modifiers.
+**Calculate statistics & forces**: per frame count/mean/std/min/max of every numeric column, mean Fx/Fy/Fz, mean |F|,
+|mean F| and ΣF, for all atoms and per particle type (the tool's ΣF is the cutting force; over all atoms ΣF ≈ 0),
+table, chart, and an **Excel** workbook (Frame Statistics, Export Metadata, Force by particle type, one sheet per column
+group: c_ computes, f_ fixes, v_ variables, displacement, positions/velocities/forces, others) with the chosen columns
+and statistics.
+
+## Ductile–brittle regime (OVITO page, "Ductile–brittle" tab)
+
+Per selected frame, in a zone from `ahead` Å in front of the cutting edge to `behind` Å behind it (tool = chosen particle
+type, cutting along x towards −x by default, surface normal y), OVITO computes (`ovito_worker.op_regime`):
+
+- **crack faces**: atoms on OVITO's surface mesh (ConstructSurfaceModifier, probe radius 3 Å) more than 4 Å below the
+  tool's lowest atom, excluding the workpiece's own bottom and x-end faces;
+- **voids**: enclosed empty regions of that mesh (≥ 30 Å³);
+- **chip**: workpiece atoms above the original surface (frame 0, median of the highest atom per 10 Å column), split by
+  cluster analysis (3 Å); fragments = pieces ≥ 20 atoms;
+- **disordered fraction**: interior zone atoms classed "other" by Identify diamond structure (surface atoms excluded);
+  **damage depth**: deepest such atom behind the cutting edge, below the tool;
+- **forces**: Fc = |ΣFx|, Ft = |ΣFy| over the tool's atoms, Ft/Fc; **depth of cut** = original surface − tool bottom.
+
+A frame is **brittle** when any criterion holds (crack-face atoms ≥ 20, voids ≥ 1, chip fragments ≥ 2, optionally a
+cutting-force drop ≥ 30 % between analysed frames), otherwise **ductile**; the summary names the first brittle frame and
+its evidence. All thresholds are editable; the indicators are always shown (table, charts, CSV). *Play with regime*
+shows DUCTILE/BRITTLE in the viewport while playing; *Show damage in viewport* sets the pipeline to Select type (tool) →
+Delete selected → Identify diamond structure, so amorphised material and crack faces are visible.
+
+Calibration (`tools/check_regime.py`, synthetic 3C-SiC): an intact slab gives 0 crack faces / voids / fragments; an
+enclosed void (975 Å³), a 3 Å wide crack, two chip fragments and a disordered region reaching 14 Å below the tool
+(measured 14.6 Å) are found; Ft/Fc and depth of cut are exact. A 4 Å probe misses a 3 Å crack: the probe must be smaller
+than the crack opening. These are indicators, not proof: confirm brittle frames visually.
+
+## HPC connection (OVITO page, "HPC…", local backend only)
+
+Host/IP, port, username and password (keyboard-interactive and one-time codes supported) or a private key. The
+credentials are used once to open the SSH connection and are never stored or logged; unknown host keys must be
+confirmed by fingerprint (kept in `~/.nanocut/known_hosts`), changed keys are refused. Browse the cluster, open a dump
+sequence: frames are fetched over SFTP only when computed (see the storage table); results are identical to reading the
+same files locally (`tools/check_remote.py`).
+
 ## Architecture
 
 ```
@@ -185,29 +243,21 @@ webapp/
   the backend is reachable by others.
 - Values shown are read from files, computed by NanoCut (labelled "computed"), or are clearly labelled mock/demo data.
 
-## Deployment (Vercel: frontend and API in one project)
+## Deployment (Vercel: one container with OVITO)
 
 ```bat
 .venv\Scripts\python webapp\tools\stage_vercel.py
 cd build\vercel && npx vercel deploy --prod
 ```
-`stage_vercel.py` copies into `build/vercel`: the frontend as `public/` (served by the CDN), the API as one Python
-function (`app.py`, FastAPI, 300 s, 2 GB), the engine, potentials, reference notes, the run folders with their dumps and the
-text files of the reference decks from `C:\BTP\Cutting`. Not bundled: `runs/smoke3` (413 MB), restart files, the 45 GB
-of dumps in `Cutting/5-30` and `Manual.pdf`; those show fewer frames/files than on this PC. It deploys to the same
-Vercel project as before, so the URL stays https://md-visualizer-mauve.vercel.app.
+`stage_vercel.py` writes `build/vercel`: the application, the bundled data (run folders except `runs/smoke3`, reference
+decks) and `Dockerfile.vercel` (python 3.12 + OVITO 3.16 + the Qt/Mesa libraries; Mesa's lavapipe provides the Vulkan
+device OVITO needs, there is no GPU). Vercel builds the image and runs it as one function (1 vCPU, 2 GB, 300 s).
+Project settings: `VERCEL_SUPPORT_LARGE_FUNCTIONS=1`, private Blob store `nanocut-data` (`BLOB_READ_WRITE_TOKEN`).
 
-On Vercel (`VERCEL` is set): background jobs run inside the request that starts them (functions share no memory, so
-polling another instance would fail); the Studio's backend paths are limited to the bundled folders and your own dumps
-are read in the browser; the OVITO page reports itself unavailable (OVITO with Qt is ~400 MB). Responses are gzip
-compressed to stay under the 4.5 MB response limit (a full 97,815-atom frame: 4.2 MB → 1.1 MB).
-
-- **Backend elsewhere:** `uvicorn webapp.backend.app.main:app --host 0.0.0.0 --port 8600` on a machine that has the
-  project files; set `NANOCUT_CORS_ORIGINS=https://<your-vercel-app>.vercel.app`, and optionally
-  `NANOCUT_PROJECT_ROOT` / `NANOCUT_REFERENCE_ROOT`; point a static frontend at it with
-  `<script>window.NANOCUT_API_BASE="https://api.example.org"</script>` in `index.html`.
-- **Without a backend** the frontend switches to the offline demo (amber strip, "Offline demo · fixtures"); regenerate
-  the snapshot with `.venv\Scripts\python webapp\tools\make_fixtures.py`.
+Hosted behaviour (`NANOCUT_HOSTED=1`): jobs run inside the request; uploads go from the browser straight to Blob
+(client token, multipart above 64 MB) and instances fetch frames on demand; renders, exports and CSVs come back as
+presigned Blob URLs (1 h); live frames are one response, compact-encoded when above the 4.5 MB limit (labelled, picking
+uses full data); frame exports and regime analyses run in batches; HPC and local file dialogs are refused.
 
 ## Known limits
 
@@ -219,6 +269,6 @@ compressed to stay under the 4.5 MB response limit (a full 97,815-atom frame: 4.
   file; values are float32 (≈1e-4 Å at 1000 Å). In the browser a 2-million-atom frame takes ~1 GB of memory while parsed
   (2 frames are cached instead of 3). It covers the OVITO features
   used for burr, pile-up and displacement figures.
-- Self-check: 47 checks (27 + 4 deck editor + 10 Studio + 6 OVITO).
+- Self-check: 52 checks; plus check_dump_reader, check_regime, check_remote.
 - Authentication is not implemented: the hosted API is public (read-only, serves only the bundled files).
   Locally, bind to 127.0.0.1 (default) unless deployed behind access control.
