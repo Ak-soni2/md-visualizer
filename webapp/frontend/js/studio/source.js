@@ -131,7 +131,7 @@ export const browserSource = {
     const first = await call({ op: "head", file: frames[0].file, start: frames[0].start, gz: frames[0].gz });
     const id = hash(`${seq.dir}|${seq.pattern}|${seq.bytes}`);
     for (const k of [...cache.keys()]) if (k.startsWith(id + ":")) cache.delete(k);
-    return { id, dir: seq.dir, pattern: seq.pattern, label: `${seq.dir.split("/").pop()}/${seq.pattern}`, display: seq.dir, files: files.length,
+    return { id, dir: seq.dir, pattern: seq.pattern, label: seq.dir === seq.pattern ? seq.pattern : `${seq.dir.split("/").pop()}/${seq.pattern}`, display: seq.dir, files: files.length,
       steps, steps_from: stepsFrom, natoms: first.natoms, columns: first.columns, cell: first.cell, bytes: seq.bytes,
       n_frames: frames.length, local: true, _frames: frames };
   },
