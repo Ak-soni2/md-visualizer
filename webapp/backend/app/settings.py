@@ -20,6 +20,8 @@ TEXT_SUFFIXES = {".in", ".txt", ".md", ".json", ".log", ".sh", ".bat", ".py", ".
 IMAGE_SUFFIXES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".svg": "image/svg+xml"}
 MAX_TEXT_BYTES = 2_000_000          # source viewer limit; dumps and trajectories are never sent as text
 MAX_DUMP_BYTES = 800_000_000        # refuse to parse a single dump frame larger than this in a request
+# hosted (Vercel): instances share no disk or memory; results go through Blob storage, responses are at most 4.5 MB
+HOSTED = bool(os.environ.get("VERCEL") or os.environ.get("NANOCUT_HOSTED"))
 DEFAULT_MAX_ATOMS = 60_000          # atoms sent to the browser per frame unless asked otherwise
 
 CORS_ORIGINS = [o.strip() for o in os.environ.get("NANOCUT_CORS_ORIGINS", "http://localhost:8600,http://127.0.0.1:8600").split(",") if o.strip()]

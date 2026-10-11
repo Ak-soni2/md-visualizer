@@ -4,9 +4,13 @@ import { CONFIG } from "./config.js";
 import { bus } from "./state.js";
 
 let mode = "unknown";            // "live" | "fixtures" | "offline"
-let fixtureIndex = null;
+let fixtureIndex = null, healthInfo = null;
 
 export const apiMode = () => mode;
+/** true when the backend runs hosted (Vercel): uploads go to Blob storage, results come back as download URLs */
+export const apiHosted = () => !!healthInfo?.hosted;
+/** a result URL from the backend: absolute (Blob) or relative to the API */
+export const resultUrl = u => (/^https?:/.test(u) ? u : url(u));
 
 function url(path) { return CONFIG.apiBase.replace(/\/$/, "") + path; }
 
@@ -42,7 +46,8 @@ async function fromFixtures(path) {
 
 export async function checkHealth() {
   try {
-    const { body } = await fetchJSON("/api/health", { timeout: 5000 });
+    const { body } = await fetchJSON("/api/health", { timeout: 15000 });
+    healthInfo = body;
     setMode("live", body);
     return body;
   } catch {
@@ -66,9 +71,9 @@ export async function get(path) {
   return body;
 }
 
-export async function post(path, data) {
+export async function post(path, data, timeout) {
   if (mode !== "live") { const e = new Error("this action needs the Python backend (offline demo is read-only)"); e.status = 503; e.offline = true; throw e; }
-  const { status, body } = await fetchJSON(path, { method: "POST", body: JSON.stringify(data ?? {}) });
+  const { status, body } = await fetchJSON(path, { method: "POST", body: JSON.stringify(data ?? {}), timeout });
   return { status, body };
 }
 
@@ -79,7 +84,8 @@ export async function job(path, { method = "GET", data, onProgress, timeoutMs = 
     return body.result ?? body;
   }
   if (mode !== "live") { const e = new Error("backend unreachable"); e.status = 0; throw e; }
-  const first = method === "POST" ? await post(path, data) : await fetchJSON(path);
+  // a hosted backend runs the job inside this request (up to 300 s), so the first request may take that long
+  const first = method === "POST" ? await post(path, data, 330000) : await fetchJSON(path, { timeout: 330000 });
   let rec = first.body;
   if (!(rec && rec.id && rec.status)) return rec;                                  // plain (non-job) result
   const t0 = performance.now();

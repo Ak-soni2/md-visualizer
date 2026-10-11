@@ -114,7 +114,7 @@ export async function render(root) {
   const bar = el("div", { class: "st-bar" }, svg("folder"),
     el("button", { class: "btn primary", type: "button", "data-tip": "Upload dump files from this computer to the OVITO server (kept 24 h)", onclick: () => pickFiles.click() }, "Upload files…"),
     el("button", { class: "btn", type: "button", "data-tip": "Upload a folder of dumps (searched two levels deep)", onclick: () => pickDir.click() }, "Upload folder…"),
-    el("button", { class: "btn", type: "button", "data-tip": "Connect to an HPC cluster over SSH and open dumps that stay there", onclick: () => openHpc((source, label) => open(source, { ...source, label })) }, "HPC…"),
+    api.apiHosted() ? null : el("button", { class: "btn", type: "button", "data-tip": "Connect to an HPC cluster over SSH and open dumps that stay there", onclick: () => openHpc((source, label) => open(source, { ...source, label })) }, "HPC…"),
     pickFiles, pickDir, pathIn, pathList, el("button", { class: "btn", type: "button", onclick: () => scan(pathIn.value) }, "Open path"), seqSel, srcInfo);
   const glc = el("canvas", { class: "gl", "aria-hidden": "true" });
   const ovc = el("canvas", { class: "ov", tabindex: "0", role: "img", "aria-label": "OVITO viewport. Drag to rotate, right-drag or Shift-drag to pan, wheel to zoom, double-click to zoom all, click a particle to inspect it." });
@@ -168,17 +168,50 @@ export async function render(root) {
     if (!r.sequences.length) { idle(); return showState(el("div", { class: "state err" }, el("b", {}, "No LAMMPS dump among the picked files"), el("span", {}, "Files must start with 'ITEM: TIMESTEP'."))); }
     pickSeq(r.sequences, seq => upload(seq, r.path));
   }
+  /** hosted: one file straight to the private Blob store with a client token from the backend (single PUT, or 8 MB
+   *  parts above 64 MB); nothing passes through the backend function. */
+  async function blobUpload(f, name, session, onPart) {
+    const tr = await fetch(api.apiUrl("/api/ovito/upload-token"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, size: f.size, session }) });
+    const t = await tr.json();
+    if (!tr.ok) throw new Error(t.detail || tr.statusText);
+    const H = { authorization: `Bearer ${t.token}`, "x-api-version": t.version, "x-vercel-blob-store-id": t.store, "x-vercel-blob-access": "private" };   // (x-allow-overwrite is refused by the CORS preflight; paths are unique)
+    const url = (path) => `${t.api}${path}?pathname=${encodeURIComponent(t.pathname)}`;
+    const ok = async r => { const b = await r.json().catch(() => ({})); if (!r.ok) throw new Error(b.error?.message || r.statusText); return b; };
+    if (!t.multipart) { await ok(await fetch(url("/"), { method: "PUT", headers: H, body: f })); onPart(f.size); return { name, pathname: t.pathname, size: f.size }; }
+    const up = await ok(await fetch(url("/mpu"), { method: "POST", headers: { ...H, "x-mpu-action": "create" } }));
+    const parts = [];
+    for (let off = 0, n = 1; off < f.size; off += t.part_size, n++) {
+      if (!alive) throw new Error("cancelled");
+      const body = f.slice(off, Math.min(f.size, off + t.part_size));
+      const r = await ok(await fetch(url("/mpu"), { method: "POST", body, headers: { ...H, "x-mpu-action": "upload", "x-mpu-key": encodeURIComponent(up.key), "x-mpu-upload-id": up.uploadId, "x-mpu-part-number": String(n) } }));
+      parts.push({ etag: r.etag, partNumber: n });
+      onPart(body.size);
+    }
+    await ok(await fetch(url("/mpu"), { method: "POST", body: JSON.stringify(parts), headers: { ...H, "content-type": "application/json", "x-mpu-action": "complete", "x-mpu-key": encodeURIComponent(up.key), "x-mpu-upload-id": up.uploadId } }));
+    return { name, pathname: t.pathname, size: f.size };
+  }
   async function upload(seq, label) {
-    const sid = randHex(), files = seq._files, total = files.reduce((s, f) => s + f.size, 0);
+    const sid = randHex(), files = seq._files, total = files.reduce((s, f) => s + f.size, 0), hosted = api.apiHosted();
     let sent = 0, cancel = false;
     const bar = el("i", {}), msg = el("span", { class: "muted" }, "");
     showState(el("div", { class: "state" }, el("b", {}, `Uploading ${num(files.length)} file${files.length > 1 ? "s" : ""} (${bytes(total)}) to the OVITO server`),
       el("div", { class: "progress", style: { width: "320px" } }, bar), msg,
       el("button", { class: "btn", type: "button", onclick: () => { cancel = true; } }, "Cancel")));
-    const t0 = performance.now();
+    const t0 = performance.now(), uploaded = [];
+    const tick = (n, f) => {
+      sent += n;
+      const rate = sent / Math.max(0.001, (performance.now() - t0) / 1000);
+      bar.style.width = `${(100 * sent) / total}%`;
+      msg.textContent = `${bytes(sent)} of ${bytes(total)} · ${bytes(rate)}/s · ${f.name}${hosted ? " · private upload store" : ""}`;
+    };
     try {
       for (const f of files) {
         const name = safeName(f.name);
+        if (hosted) {
+          if (cancel || !alive) throw new Error("cancelled");
+          uploaded.push(await blobUpload(f, name, sid, n => tick(n, f)));
+          continue;
+        }
         for (let off = 0; off < f.size || off === 0; off += CHUNK) {
           if (cancel || !alive) throw new Error("cancelled");
           const body = f.slice(off, Math.min(f.size, off + CHUNK));
@@ -196,12 +229,13 @@ export async function render(root) {
       return e.message === "cancelled" ? toast("Upload cancelled.", "warn") : showState(errorState(e));
     }
     const pattern = safeName(seq.pattern);
-    open({ upload: sid, pattern }, { upload: sid, pattern, label: `${label} (uploaded)` });
+    if (hosted) open({ blob: uploaded, pattern }, { blob: uploaded, pattern, label: `${label} (uploaded)` });
+    else open({ upload: sid, pattern }, { upload: sid, pattern, label: `${label} (uploaded)` });
   }
 
   async function open(source, last) {
     stop();
-    const same = S.last && JSON.stringify([S.last.upload, S.last.remote, S.last.dir, S.last.pattern]) === JSON.stringify([last.upload, last.remote, last.dir, last.pattern]);
+    const same = S.last && JSON.stringify([S.last.upload, S.last.remote, S.last.blob?.[0]?.pathname, S.last.dir, S.last.pattern]) === JSON.stringify([last.upload, last.remote, last.blob?.[0]?.pathname, last.dir, last.pattern]);
     busy("OVITO reads the trajectory…");
     let inf;
     try { inf = await api.job("/api/ovito/info", { method: "POST", data: { ...source, frame: 0 }, pollMs: 200 }); }
@@ -222,15 +256,12 @@ export async function render(root) {
 
   // ---------------------------------------------------------------------------------------------- frames
   const spec = (i = fi) => ({ source: src, frame: i, types: S.types, cell: S.cell, modifiers: S.modifiers });
-  function fetchFrame(i, onProgress) {
+  function fetchFrame(i) {
     if (!cache.has(i)) {
       const p = (async () => {
-        const meta = await api.job("/api/ovito/live", { method: "POST", data: { spec: spec(i) }, pollMs: 100, onProgress });
-        const buf = await api.getBinary(`/api/ovito/live/${meta.file}`);
-        const n = meta.layout.n, m = meta.layout.lines;
-        const colOff = n * 12, radOff = colOff + n * 3 + ((4 - (n * 3) % 4) % 4), lineOff = radOff + n * 4;
-        return { meta, pos: new Float32Array(buf, 0, n * 3), col: new Uint8Array(buf, colOff, n * 3), rad: new Float32Array(buf, radOff, n),
-          lines: new Float32Array(buf, lineOff, m * 3) };
+        const r = await fetch(api.apiUrl("/api/ovito/live"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ spec: spec(i) }) });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+        return decodeLive(await r.arrayBuffer());
       })();
       cache.set(i, p);
       p.catch(() => cache.delete(i));
@@ -238,11 +269,31 @@ export async function render(root) {
     }
     return cache.get(i);
   }
+  /** uint32 header length, JSON header (OVITO's numbers + layout), then the particles (see ovito_worker._encode) */
+  function decodeLive(buf) {
+    const hl = new DataView(buf).getUint32(0, true), meta = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, hl)));
+    const L = meta.layout, n = L.n, al = x => x + ((4 - (x % 4)) % 4);
+    let off = 4 + hl, pos, col, rad, idx = null;
+    if (L.encoding === "f32") {
+      pos = new Float32Array(buf, off, n * 3); off += n * 12;
+      col = new Uint8Array(buf, off, n * 3); off += al(n * 3);
+      rad = new Float32Array(buf, off, n); off += n * 4;
+    } else {                                                            // hosted, frame larger than the response limit
+      const q = new Uint16Array(buf, off, n * 3); off += al(n * 6);
+      col = new Uint8Array(buf, off, n * 3); off += al(n * 3);
+      const ri = new Uint8Array(buf, off, n); off += al(n);
+      if (L.index_map) { idx = new Uint32Array(buf, off, n); off += n * 4; }
+      pos = new Float32Array(n * 3);
+      for (let k = 0; k < n; k++) for (let d = 0; d < 3; d++) pos[3 * k + d] = L.lo[d] + q[3 * k + d] * L.scale[d];
+      rad = Float32Array.from(ri, x => L.radii[x]);
+    }
+    return { meta, pos, col, rad, idx, lines: new Float32Array(buf, off, L.lines * 3) };
+  }
   async function loadFrame(i, fit = false) {
     const tok = ++loadTok;
     if (!frame) busy(`OVITO computes frame ${i}…`); else setHud(`OVITO computes frame ${i}…`);
     try {
-      const f = await fetchFrame(i, r => { if (tok === loadTok) frame ? setHud(`OVITO computes frame ${i}… ${r.message || ""}`) : busyNode?.update(r); });
+      const f = await fetchFrame(i);
       if (tok !== loadTok || !alive) return;
       frame = f; fi = i; S.frame = i; picked = null; pickHud.hidden = true; save();
       const n = f.meta.layout.n;
@@ -382,7 +433,7 @@ export async function render(root) {
     picked = i; requestDraw();
     if (i == null) { pickHud.hidden = true; frame.pickedRow = null; refreshSide("results"); return; }
     try {
-      const r = await api.post("/api/ovito/atom", { spec: spec(fi), index: i });
+      const r = await api.post("/api/ovito/atom", { spec: spec(fi), index: frame.idx ? frame.idx[i] : i });
       const v = r.body.values;
       frame.pickedRow = v;
       pickHud.hidden = false;
@@ -449,7 +500,8 @@ export async function render(root) {
     hud.hidden = false;
     const s = frame.meta.seconds;
     hud.append(el("b", {}, S.last?.label || `${S.last?.dir?.split(/[\\/]/).pop() || ""}/${S.last?.pattern || ""}`),
-      el("span", {}, `Frame ${fi} · step ${num(frame.meta.step)} · ${num(frame.meta.layout.n)} particles after the OVITO pipeline · OVITO ${s.compute} s`),
+      el("span", {}, `Frame ${fi} · step ${num(frame.meta.step)} · ${num(frame.meta.layout.n_total)} particles after the OVITO pipeline · OVITO ${s.compute} s`),
+      frame.meta.layout.encoding === "q16" ? el("span", { class: "acc" }, `Hosted display: positions to ±${frame.meta.layout.precision_A.toFixed(3)} Å${frame.meta.layout.stride > 1 ? `, 1 in ${frame.meta.layout.stride} particles shown (${num(frame.meta.layout.n)})` : ""}; all numbers, picking and renders use OVITO's full data.`) : null,
       ...(msg ? [el("span", { class: "acc" }, msg)] : []));
   }
 
@@ -637,8 +689,8 @@ export async function render(root) {
         el("div", { class: "actions" }, el("button", { class: "btn", type: "button", onclick: () => dlg.remove() }, "Close"))), el("div", { class: "panel-body st-render" }, box)));
     document.body.append(dlg);
     try {
-      const r = await api.job("/api/ovito/render", { method: "POST", data: { spec: fullSpec(movie) }, onProgress: x => box.update(x), pollMs: 300 });
-      const url = movie ? URL.createObjectURL(await encodeMovie(r, box)) : api.apiUrl(`/api/ovito/file/${r.image}`);
+      const r = movie ? await encodeMovie(box) : await api.job("/api/ovito/render", { method: "POST", data: { spec: fullSpec(false) }, onProgress: x => box.update(x), pollMs: 300 });
+      const url = movie ? URL.createObjectURL(r.blob) : api.resultUrl(r.url);
       const base = `${(S.last?.pattern || "ovito").replace(/\*.*$/, "").replace(/[^\w.-]+/g, "_").replace(/[._]+$/, "")}`;
       const name = movie ? `${base}_frames${S.render.anim.start}-${S.render.anim.end ?? info.num_frames - 1}_ovito.mp4` : `${base}_frame${fi}_ovito.png`;
       const body = dlg.querySelector(".panel-body");
@@ -648,23 +700,30 @@ export async function render(root) {
         el("button", { class: "btn", type: "button", onclick: () => scriptModal(r.script) }, "Script"));
     } catch (e) { clear(dlg.querySelector(".panel-body")).append(errorState(e)); }
   }
-  /** OVITO rendered one PNG per frame; encode them as H.264 MP4 here (OVITO's own MP4 is MPEG-4 part 2, which
-   *  browsers and PowerPoint do not play). Each frame lasts exactly 1/fps; the pixels are OVITO's. */
-  async function encodeMovie(r, box) {
-    const fps = S.render.anim.fps, w = S.render.w + S.render.w % 2, h = S.render.h + S.render.h % 2;
+  /** Movie: OVITO renders every frame (same camera, overlays, renderer as the image; [Timestep] labels update), the
+   *  browser encodes H.264 MP4 (OVITO's own MP4 is MPEG-4 part 2, which browsers and PowerPoint do not play).
+   *  Each frame lasts exactly 1/fps; the pixels are OVITO's. One request per frame, so it also works hosted. */
+  async function encodeMovie(box) {
+    const A = S.render.anim, fps = A.fps, w = S.render.w + S.render.w % 2, h = S.render.h + S.render.h % 2;
+    const end = Math.min(A.end ?? info.num_frames - 1, info.num_frames - 1), list = [];
+    for (let f = Math.max(0, A.start || 0); f <= end; f += Math.max(1, A.every || 1)) list.push(f);
+    if (!list.length) throw new Error("no frames in the movie range");
     const codec = await pickCodec(w, h, fps, Math.round(Math.min(80e6, Math.max(1e6, w * h * fps * 0.15))));
     if (!codec) throw new Error("this browser cannot encode H.264 video at this size (WebCodecs); try Chrome or Edge, or a smaller size");
-    const writer = mp4Writer(codec, fps), cv = el("canvas", { width: w, height: h }), c = cv.getContext("2d");
+    const writer = mp4Writer(codec, fps), cv = el("canvas", { width: w, height: h }), c = cv.getContext("2d"), t0 = performance.now();
+    let first = null;
     try {
-      for (let k = 0; k < r.frames.length; k++) {
-        box.update({ progress: k / r.frames.length, message: `encoding frame ${k + 1} of ${r.frames.length} (${codec.label})` });
-        const bmp = await createImageBitmap(await (await fetch(api.apiUrl(`/api/ovito/movie/${r.movie}/${r.frames[k]}`))).blob());
+      for (let k = 0; k < list.length; k++) {
+        const eta = k ? (performance.now() - t0) / k * (list.length - k) / 1000 : null;
+        box.update({ progress: k / list.length, message: `OVITO renders frame ${list[k]} (${k + 1} of ${list.length})${eta ? `, about ${eta < 90 ? Math.ceil(eta) + " s" : Math.ceil(eta / 60) + " min"} left` : ""}` });
+        const r = await api.job("/api/ovito/render", { method: "POST", data: { spec: { ...fullSpec(false), frame: list[k] } }, pollMs: 300 });
+        first = first || r;
+        const bmp = await createImageBitmap(await (await fetch(api.resultUrl(r.url))).blob());
         c.fillStyle = S.render.bg; c.fillRect(0, 0, w, h); c.drawImage(bmp, 0, 0, w, h); bmp.close();
         await writer.add(cv);
       }
       const blob = await writer.finish();
-      r.bytes = blob.size;
-      return blob;
+      return { blob, bytes: blob.size, seconds: ((performance.now() - t0) / 1000).toFixed(1), script: first.script };
     } catch (e) { writer.abort(); throw e; }
   }
   async function showScript() {
@@ -710,7 +769,7 @@ export async function render(root) {
         clear(res).append(loading("OVITO exports…"));
         try {
           const r = await api.job("/api/ovito/export", { method: "POST", data: { spec: fullSpec(false), format: fmt, columns: [...cols] }, pollMs: 300 });
-          clear(res).append(el("a", { class: "btn primary", href: api.apiUrl(`/api/ovito/file/${r.file}`), download: r.file }, svg("download"), `${r.file} (${bytes(r.bytes)})`));
+          clear(res).append(el("a", { class: "btn primary", href: api.resultUrl(r.url), download: r.file }, svg("download"), `${r.file} (${bytes(r.bytes)})`));
         } catch (e) { clear(res).append(errorState(e)); }
       } }, "Export with OVITO"), res));
     let ref = 0;
@@ -738,7 +797,8 @@ export async function render(root) {
     el("div", { class: "field-row" }, el("button", { class: "btn primary", type: "button", onclick: () => pickFiles.click() }, "Upload files…"), el("button", { class: "btn", type: "button", onclick: () => pickDir.click() }, "Upload folder…")),
     runs.length ? el("div", { class: "chips" }, runs.map(path => el("button", { class: "chip", type: "button", onclick: () => { pathIn.value = path; scan(path); } }, path))) : null));
   if (S.last?.path) scan(S.last.path);
-  else if (S.last?.upload) open({ upload: S.last.upload, pattern: S.last.pattern }, S.last).catch(() => {});
+  else if (S.last?.upload && !api.apiHosted()) open({ upload: S.last.upload, pattern: S.last.pattern }, S.last).catch(() => {});
+  else if (S.last?.blob && api.apiHosted()) open({ blob: S.last.blob, pattern: S.last.pattern }, S.last).catch(() => {});
 
   return () => { alive = false; playing = false; ro.disconnect(); document.removeEventListener("keydown", onKey); cancelAnimationFrame(raf); };
 }

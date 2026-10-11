@@ -210,45 +210,78 @@ def _files(s, rdir, pattern):
     return files
 
 
+_blob_used = {}                                  # local path -> last use, for files fetched from Blob (hosted uploads)
+
+
 def mirror(source):
-    """{remote, dir, pattern} -> local folder with a placeholder per remote file. Returns (folder, files)."""
-    s = get(source["remote"])
-    rdir, pattern = str(source.get("dir") or ""), str(source.get("pattern") or "")
-    if not rdir or not pattern or "/" in pattern:
-        raise HTTPException(422, "remote folder and file pattern required")
-    files = _files(s, rdir, pattern)
-    folder = MIRROR / s["id"] / hashlib.sha1(f"{rdir}|{pattern}".encode()).hexdigest()[:12]
+    """{remote, dir, pattern} (HPC) or {blob: [{name, pathname, size}], pattern} (files uploaded to the hosted store)
+    -> (folder with a placeholder per file, [(name, size)] in frame order, fetch(name, dest, callback), lru dict, host)."""
+    pattern = str(source.get("pattern") or "")
+    if not pattern or "/" in pattern or "\\" in pattern:
+        raise HTTPException(422, "file pattern required")
+    if source.get("blob"):
+        from . import blobstore
+        items = source["blob"]
+        if not isinstance(items, list) or not items or len(items) > 100_000:
+            raise HTTPException(422, "uploaded file list missing")
+        by_name = {}
+        for it in items:
+            name, path = str(it.get("name") or ""), str(it.get("pathname") or "")
+            if not re.fullmatch(r"[\w.\-]{1,200}", name) or not re.fullmatch(r"uploads/[\w.\-/]{1,400}", path) or ".." in path:
+                raise HTTPException(422, f"invalid uploaded file {name!r}")
+            by_name[name] = (path, int(it.get("size") or 0))
+        if "*" in pattern:
+            rx = re.compile("^" + re.escape(pattern).replace(r"\*", r"(\d+)") + "$")
+            numbered = sorted((int(m.group(1)), n) for n, m in ((n, rx.match(n)) for n in by_name) if m)
+            files = [(n, by_name[n][1]) for _, n in numbered]
+        else:
+            files = [(pattern, by_name[pattern][1])] if pattern in by_name else []
+        if not files:
+            raise HTTPException(404, f"no uploaded file matches {pattern}")
+        folder = MIRROR / "blob" / hashlib.sha1("|".join(by_name[n][0] for n, _ in files).encode()).hexdigest()[:16]
+        fetch = lambda name, dest, cb: blobstore.download(by_name[name][0], dest, cb)
+        lru, host = _blob_used, "the upload store"
+    else:
+        sess = get(source["remote"])
+        rdir = str(source.get("dir") or "")
+        if not rdir:
+            raise HTTPException(422, "remote folder required")
+        files = _files(sess, rdir, pattern)
+        folder = MIRROR / sess["id"] / hashlib.sha1(f"{rdir}|{pattern}".encode()).hexdigest()[:12]
+
+        def fetch(name, dest, cb):
+            with sess["lock"]:
+                sess["sftp"].get(f"{rdir.rstrip('/')}/{name}", dest, callback=cb)
+        lru, host = sess["used"], sess["host"]
     folder.mkdir(parents=True, exist_ok=True)
     for name, _ in files:
         p = folder / name
         if not p.exists():
             p.touch()
-    return s, folder, files
+    return folder, files, fetch, lru, host
 
 
 def prepare(source, frames, progress=None):
     """Make sure the files of these frames (and frame 0, which OVITO reads when it opens the trajectory) are on local
     disk; empty the least recently used others beyond the cache size."""
-    if not source or not source.get("remote"):
+    if not source or not (source.get("remote") or source.get("blob")):
         return
-    s, folder, files = mirror(source)
+    folder, files, fetch, used, host = mirror(source)
     need = sorted({0, *[int(f) for f in frames if f is not None]} & set(range(len(files)))) if len(files) > 1 else [0]
-    used = s["used"]
     for k, f in enumerate(need):
         name, size = files[f]
         local = folder / name
         used[str(local)] = time.time()
         if local.stat().st_size == size and size:
             continue
-        tmp = local.with_suffix(local.suffix + ".part")
+        tmp = str(local) + ".part"
         t0 = time.time()
 
-        def cb(done, total, name=name):
+        def cb(done, total, name=name, k=k):
             if progress:
                 rate = done / max(1e-3, time.time() - t0)
-                progress(min(0.95, 0.05 + 0.9 * (k + done / max(total, 1)) / len(need)), f"fetching {name} from {s['host']}: {done / 1e6:.0f}/{total / 1e6:.0f} MB, {rate / 1e6:.1f} MB/s")
-        with s["lock"]:
-            s["sftp"].get(f"{source['dir'].rstrip('/')}/{name}", str(tmp), callback=cb)
+                progress(min(0.95, 0.05 + 0.9 * (k + done / max(total, 1)) / len(need)), f"fetching {name} from {host}: {done / 1e6:.0f}/{total / 1e6:.0f} MB, {rate / 1e6:.1f} MB/s")
+        fetch(name, tmp, cb)
         os.replace(tmp, local)
     keep = {str(folder / files[f][0]) for f in need}
     cached = sorted((t, p) for p, t in used.items() if p not in keep and Path(p).exists() and Path(p).stat().st_size)
@@ -258,5 +291,7 @@ def prepare(source, frames, progress=None):
 
 
 def label(source):
+    if source.get("blob"):
+        return f"{source['pattern']} (uploaded)"
     s = get(source["remote"])
     return f"{s['user']}@{s['host']}:{source['dir'].rstrip('/')}/{source['pattern']}"

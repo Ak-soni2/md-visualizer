@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__, advice, catalog, dumps, jobs, models, params, studio, validation
-from .settings import (CORS_ORIGINS, DEFAULT_MAX_ATOMS, FRONTEND_DIR, IMAGE_SUFFIXES, MAX_TEXT_BYTES, PROJECT_ROOT,
+from .settings import (CORS_ORIGINS, HOSTED, DEFAULT_MAX_ATOMS, FRONTEND_DIR, IMAGE_SUFFIXES, MAX_TEXT_BYTES, PROJECT_ROOT,
                        REFERENCE_ROOT, TEXT_SUFFIXES, rel, safe_path)
 
 import nanocut
@@ -78,7 +78,7 @@ def health():
     return dict(status="ok", api_version=__version__, nanocut_version=nanocut.__version__, python=sys.version.split()[0],
                 platform=platform.platform(terse=True), numpy=np.__version__, uptime_s=round(time.time() - STARTED, 1),
                 project_root=str(PROJECT_ROOT), reference_root=str(REFERENCE_ROOT), reference_root_found=REFERENCE_ROOT.exists(),
-                jobs_running=sum(1 for j in jobs._jobs.values() if j["status"] in ("queued", "running")))
+                jobs_running=sum(1 for j in jobs._jobs.values() if j["status"] in ("queued", "running")), hosted=HOSTED)
 
 
 @app.get("/api/health/lammps")

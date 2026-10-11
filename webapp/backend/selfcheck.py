@@ -2,6 +2,7 @@
 
     .venv\\Scripts\\python webapp\\backend\\selfcheck.py
 """
+import json
 import os
 import sys
 import time
@@ -193,7 +194,7 @@ if ost.get("available"):
              "view": {"type": "Top"}, "render": {"w": 320, "h": 200}, "overlays": {"legend": {"enabled": True}}}
     orr = job_result(wait("/api/ovito/render", "post", json={"spec": ospec}))
     oa = orr.get("attributes", {})
-    check("OVITO render: image and attributes", orr.get("bytes", 0) > 1000 and c.get(f"/api/ovito/file/{orr.get('image')}").status_code == 200
+    check("OVITO render: image and attributes", orr.get("bytes", 0) > 1000 and c.get(orr.get('url', '/none')).status_code == 200
           and oa.get("SelectType.num_selected") == 43363, str({k: oa.get(k) for k in ("Timestep", "SelectType.num_selected")}))
     check("OVITO agrees with NanoCut: dy range and burr count", abs(oa.get("ColorCoding.RangeMin", 0) + 2.905) < 1e-3 and abs(oa.get("ColorCoding.RangeMax", 0) - 0.643) < 1e-3
           and oa.get("ExpressionSelection.count") == 1, str({k: oa.get(k) for k in ("ColorCoding.RangeMin", "ColorCoding.RangeMax", "ExpressionSelection.count")}))
@@ -205,8 +206,9 @@ if ost.get("available"):
     check("OVITO file endpoint refuses other paths", c.get("/api/ovito/file/..%2F..%2Fsettings.py").status_code == 404)
     # live 3D viewport: OVITO's particles after the pipeline, as binary; selected particles in OVITO's selection colour
     lspec = {"source": osrc, "frame": 2, "types": {}, "cell": False, "modifiers": [{"type": "select_type", "types": [1], "enabled": True}]}
-    lv = job_result(wait("/api/ovito/live", "post", json={"spec": lspec}))
-    raw = c.get(f"/api/ovito/live/{lv.get('file')}").content
+    resp = c.post("/api/ovito/live", json={"spec": lspec}).content          # uint32 header length, JSON header, binary
+    hl = int.from_bytes(resp[:4], "little")
+    lv, raw = json.loads(resp[4:4 + hl]), resp[4 + hl:]
     n = lv.get("layout", {}).get("n", 0)
     col = np.frombuffer(raw, np.uint8, n * 3, n * 12).reshape(-1, 3) if n else np.zeros((0, 3), np.uint8)
     pos = np.frombuffer(raw, np.float32, n * 3).reshape(-1, 3) if n else col

@@ -199,7 +199,6 @@ def op_live(req):
     P = data.particles
     pos = np.ascontiguousarray(np.asarray(P.positions, dtype=np.float32))
     col, rad = display_colors_radii(P)
-    parts = [pos.tobytes(), col.tobytes(), b"\0" * ((-col.nbytes) % 4), rad.tobytes()]
     lines = np.zeros((0, 3), np.float32)
     if data.dislocations is not None and len(data.dislocations.segments):
         segs = []
@@ -208,7 +207,7 @@ def op_live(req):
             if len(pts) > 1:
                 segs.append(np.repeat(pts, 2, axis=0)[1:-1])
         lines = np.concatenate(segs) if segs else lines
-    parts.append(lines.tobytes())
+    parts, layout = _encode(P, pos, col, rad, lines, int(req.get("max_bytes") or 0))
     with open(req["out"], "wb") as f:
         for b in parts:
             f.write(b)
@@ -225,8 +224,40 @@ def op_live(req):
         _frames.pop(next(iter(_frames)))
     out = _summary(data)
     out.update(num_frames=n_frames, frame=frame, step=_jsonable(data.attributes.get("Timestep")), legend=legend,
-               layout=dict(n=int(P.count), lines=int(len(lines))), seconds=dict(compute=round(t1 - t0, 3), total=round(time.time() - t0, 3)))
+               layout=layout, seconds=dict(compute=round(t1 - t0, 3), total=round(time.time() - t0, 3)))
     return out
+
+
+def _pad(b):
+    return b + b"\0" * ((-len(b)) % 4)
+
+
+def _encode(P, pos, col, rad, lines, max_bytes):
+    """Binary frame for the viewport. Exact float32 positions when it fits max_bytes (0 = no limit). Otherwise (the
+    4.5 MB response limit of a hosted function) positions as uint16 within the bounding box, radii as an index into a
+    table, and if still too large every k-th particle by identifier; the layout says what was done (display only:
+    picking and all numbers always use OVITO's full data)."""
+    n, lb = int(P.count), lines.astype(np.float32).tobytes()
+    if not max_bytes or n * 19 + 4 + len(lb) <= max_bytes:
+        return [pos.tobytes(), _pad(col.tobytes()), rad.tobytes(), lb], dict(encoding="f32", n=n, n_total=n, lines=int(len(lines)))
+    sel, k = np.arange(n), 1
+    if n * 10 + 12 + len(lb) > max_bytes:
+        k = int(np.ceil(n * 14 / max(1, max_bytes - len(lb) - 64)))
+        ids = np.asarray(P.identifiers) if P.identifiers is not None else np.arange(n)
+        sel = np.nonzero(ids % k == 0)[0]
+    p = pos[sel].astype(np.float64)
+    lo = p.min(0) if len(p) else np.zeros(3)
+    span = (p.max(0) - lo) if len(p) else np.ones(3)
+    scale = np.where(span > 0, span / 65535.0, 1.0)
+    q = np.clip(np.rint((p - lo) / scale), 0, 65535).astype("<u2")
+    r = rad[sel]
+    table = np.unique(r)
+    if len(table) > 256:                                          # radius per particle (rare): 256 levels
+        table = np.linspace(float(r.min()), float(r.max()), 256).astype(np.float32)
+    ri = np.clip(np.searchsorted(table, r), 0, len(table) - 1).astype(np.uint8)
+    parts = [_pad(q.tobytes()), _pad(col[sel].tobytes()), _pad(ri.tobytes())] + ([sel.astype("<u4").tobytes()] if k > 1 else []) + [lb]
+    return parts, dict(encoding="q16", n=int(len(sel)), n_total=n, lines=int(len(lines)), lo=[float(x) for x in lo], scale=[float(x) for x in scale],
+                       radii=[float(x) for x in table], stride=k, index_map=k > 1, precision_A=float(scale.max()))
 
 
 def op_atom(req):
@@ -329,6 +360,8 @@ def op_frame_table(req):
                                                               np.array([names.get(int(t), "") for t in np.asarray(P.particle_types)], dtype=object)))
     out = dict(frame=frame, timestep=_jsonable(data.attributes.get("Timestep")), count=int(P.count), skipped=skipped,
                columns=[dict(name=h, ovito=o, origin=g) for h, o, g, _ in cols])
+    if req.get("csv_path"):                                     # one plain CSV (hosted: published per frame)
+        pd.DataFrame({h: a for h, _, _, a in cols}, copy=False).to_csv(req["csv_path"], index=False)
     if req.get("zip_path"):
         df = pd.DataFrame({h: a for h, _, _, a in cols}, copy=False)
         with zipfile.ZipFile(req["zip_path"], "a", zipfile.ZIP_DEFLATED, compresslevel=1) as zf:

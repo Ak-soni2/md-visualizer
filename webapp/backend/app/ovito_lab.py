@@ -21,7 +21,8 @@ import numpy as np
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 
-from . import jobs, ovito_script, remote, studio
+from . import blobstore, jobs, ovito_script, remote, studio
+from .settings import HOSTED
 
 router = APIRouter(prefix="/api/ovito", tags=["ovito"])
 WORKER = Path(__file__).resolve().parents[1] / "ovito_worker.py"
@@ -88,11 +89,11 @@ def _prune():
 
 def _source(body):
     """{path, pattern?} or {upload, pattern} -> OVITO import path (wildcard sequence or one file scanned for all its frames)."""
-    if body.get("remote"):                       # files on an HPC cluster, fetched frame by frame (remote.py)
-        rs, folder, _ = remote.mirror(body)
+    if body.get("remote") or body.get("blob"):   # HPC files or hosted uploads, fetched frame by frame (remote.py)
+        folder = remote.mirror(body)[0]
         pat = str(body["pattern"])
-        return dict(import_path=str(folder / pat), multiple_frames="*" not in pat, label=remote.label(body),
-                    remote=rs["id"], dir=str(body["dir"]), pattern=pat)
+        extra = dict(remote=str(body["remote"]), dir=str(body["dir"])) if body.get("remote") else dict(blob=body["blob"])
+        return dict(import_path=str(folder / pat), multiple_frames="*" not in pat, label=body.get("label") or remote.label(body), pattern=pat, **extra)
     if body.get("upload"):                       # files uploaded from the browser (this server's temporary folder)
         sid = str(body["upload"])
         if not re.fullmatch(r"[0-9a-f]{16}", sid) or not (UPLOAD_DIR / sid).is_dir():
@@ -118,13 +119,9 @@ def _source(body):
 @router.get("/status")
 def status():
     """Starts the OVITO worker if needed and reports the OVITO version (the first call takes a few seconds)."""
-    if os.environ.get("VERCEL"):
-        return dict(available=False, hosted=True, error="OVITO (about 400 MB with its Qt libraries) does not fit a Vercel "
-                    "function; this page works when the backend runs on a computer with OVITO installed.",
-                    install=r".venv\Scripts\python -m pip install ovito")
     try:
         info = worker.ask({"op": "hello"}, 120)
-        return dict(available=True, ovito=info["ovito"], python=sys.version.split()[0])
+        return dict(available=True, ovito=info["ovito"], python=sys.version.split()[0], hosted=HOSTED, uploads="blob" if HOSTED else "server")
     except Exception as e:
         return dict(available=False, error=str(e), install=r".venv\Scripts\python -m pip install ovito")
 
@@ -138,6 +135,17 @@ def info(body: dict = Body(...)):
         _prep(src, [frame], progress)
         return dict(source=src, **worker.ask({"op": "info", "frame": frame, **src}))
     return _job(key, "OVITO reads the trajectory", run)
+
+
+def _out_url(path, ctype="application/octet-stream"):
+    """Where the browser downloads a result file: this server's /api/ovito/file locally; a presigned Blob URL when
+    hosted (the next request may reach another instance, and responses are limited to 4.5 MB)."""
+    path = Path(path)
+    if HOSTED and blobstore.enabled():
+        url = blobstore.publish(str(path), path.name, ctype)
+        path.unlink(missing_ok=True)
+        return url
+    return f"/api/ovito/file/{path.name}"
 
 
 def _refs(spec):
@@ -174,32 +182,16 @@ def render(body: dict = Body(...)):
         spec = _spec(body)
     except ValueError as e:
         raise HTTPException(422, str(e))
-    digest = hashlib.sha1(json.dumps(spec, sort_keys=True).encode()).hexdigest()[:16]
-    movie = bool((spec.get("render") or {}).get("anim"))
-    image = OUT_DIR / f"render_{digest}.png"
-    folder = OUT_DIR / f"movie_{digest}"                # movie: one PNG per frame, rendered by OVITO
-    key = f"ovito-render:{digest}"
-    rec = jobs.by_key(key)
-    if rec and rec["status"] == "done" and not (folder.is_dir() if movie else image.exists()):
-        jobs.forget(key)
+    spec = dict(spec, render=dict(spec.get("render") or {}, anim=None))   # one frame per request (movies: the page loops)
+    image = OUT_DIR / f"render_{uuid.uuid4().hex[:16]}.png"
 
     def run(progress=None):
-        anim = (spec.get("render") or {}).get("anim") or {}
-        _prep(spec["source"], (list(range(int(anim.get("start", 0)), int(anim.get("end", 0)) + 1, max(1, int(anim.get("every", 1))))) if movie
-                               else [int(spec.get("frame", 0))]) + _refs(spec), progress)
-        if not movie:
-            res = worker.ask({"op": "run", "spec": spec, "image_path": str(image)})
-            _prune()
-            return dict(image=image.name, bytes=image.stat().st_size, script=ovito_script.build(spec, image_path=image.name), **res)
-        for old in sorted(OUT_DIR.glob("movie_*"), key=lambda p: p.stat().st_mtime)[:-2]:
-            shutil.rmtree(old, ignore_errors=True)
-        shutil.rmtree(folder, ignore_errors=True)
-        folder.mkdir()
-        res = worker.ask({"op": "run", "spec": spec, "image_path": str(folder / "frame_*.png")})
-        frames = sorted(folder.glob("frame_*.png"), key=lambda p: int(re.sub(r"\D", "", p.stem) or 0))
-        return dict(movie=folder.name, frames=[p.name for p in frames], bytes=sum(p.stat().st_size for p in frames),
-                    script=ovito_script.build(spec, image_path="frame_*.png"), **res)
-    return _job(key, "OVITO renders the movie" if movie else "OVITO renders the image", run)
+        _prep(spec["source"], [int(spec.get("frame", 0))] + _refs(spec), progress)
+        res = worker.ask({"op": "run", "spec": spec, "image_path": str(image)})
+        size = image.stat().st_size
+        _prune()
+        return dict(url=_out_url(image, "image/png"), bytes=size, script=ovito_script.build(spec, image_path="nanocut_ovito.png"), **res)
+    return _job(f"ovito-render:{image.name}", "OVITO renders the image", run)
 
 
 @router.post("/export")
@@ -220,7 +212,7 @@ def export(body: dict = Body(...)):
         _prep(spec["source"], [int(spec.get("frame", 0))] + _refs(spec), progress)
         res = worker.ask({"op": "export", "spec": spec, "path": str(OUT_DIR / name), "format": fmt, "columns": cols})
         _prune()
-        return dict(file=name, bytes=res["bytes"])
+        return dict(file=name, bytes=res["bytes"], url=_out_url(OUT_DIR / name))
     return _job(f"ovito-export:{name}", "OVITO exports the data", run)
 
 
@@ -260,33 +252,27 @@ def verify(body: dict = Body(...)):
 # ---------------------------------------------------------------------------------------------- live 3D viewport
 @router.post("/live")
 def live(body: dict = Body(...)):
-    """OVITO evaluates the page's pipeline for one frame; the browser draws the result in 3D. The job result holds
-    OVITO's numbers (attributes, statistics, legend) and the name of a binary file with, per particle after the
-    pipeline: position (float32 x3), display colour (uint8 x3, padded to 4 bytes), display radius (float32); then
-    dislocation line vertices (float32 x3, pairs). Fetch it once from /api/ovito/live/{name}."""
+    """OVITO evaluates the page's pipeline for one frame; the browser draws the result in 3D. Response: uint32 length
+    of a JSON header (OVITO's attributes, statistics, legend, layout), the header, then per particle after the
+    pipeline position, display colour and radius (layout "f32": float32 x3, uint8 x3 padded, float32; layout "q16"
+    when hosted frames would exceed the response limit, see ovito_worker._encode), then dislocation line vertices."""
     try:
         spec = _spec(body)
     except ValueError as e:
         raise HTTPException(422, str(e))
-    name = f"live_{uuid.uuid4().hex[:12]}.bin"
-
-    def run(progress=None):
-        for p in OUT_DIR.glob("live_*.bin"):                 # never fetched (closed tab): drop after 10 minutes
-            if time.time() - p.stat().st_mtime > 600:
-                p.unlink(missing_ok=True)
-        _prep(spec["source"], [int(spec.get("frame", 0))] + _refs(spec), progress)
-        return dict(file=name, **worker.ask({"op": "live", "spec": spec, "frame": spec.get("frame", 0), "out": str(OUT_DIR / name)}))
-    return _job(f"ovito-live:{name}", f"OVITO computes frame {spec.get('frame', 0)}", run)
-
-
-@router.get("/live/{name}")
-def live_file(name: str):
-    if not re.fullmatch(r"live_[0-9a-f]{12}\.bin", name) or not (OUT_DIR / name).is_file():
-        raise HTTPException(404, "frame data not found (fetched already or expired)")
-    p = OUT_DIR / name
-    data = p.read_bytes()
-    p.unlink(missing_ok=True)
-    return Response(content=data, media_type="application/octet-stream")
+    out = OUT_DIR / f"live_{uuid.uuid4().hex[:12]}.bin"
+    try:
+        _prep(spec["source"], [int(spec.get("frame", 0))] + _refs(spec))
+        meta = worker.ask({"op": "live", "spec": spec, "frame": spec.get("frame", 0), "out": str(out),
+                           "max_bytes": int(os.environ.get("NANOCUT_LIVE_MAX_BYTES", "3600000")) if HOSTED else 0})   # hosted: < 4.5 MB
+        data = out.read_bytes()
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
+    finally:
+        out.unlink(missing_ok=True)
+    head = json.dumps(meta).encode()
+    head += b" " * ((-len(head) - 4) % 4)                    # binary part starts 4-byte aligned
+    return Response(content=len(head).to_bytes(4, "little") + head + data, media_type="application/octet-stream")
 
 
 @router.post("/atom")
@@ -350,7 +336,7 @@ def frames_job(body: dict = Body(...)):
         if bad:
             raise ValueError(f"frames outside 0 … {n - 1}: {bad[:20]}{' …' if len(bad) > 20 else ''}")
         dump_cols = _dump_columns(src)
-        zip_name = f"frames_{uuid.uuid4().hex[:10]}.zip" if want_csv else None
+        zip_name = f"frames_{uuid.uuid4().hex[:10]}.zip" if want_csv and not HOSTED else None
         rows, t0 = [], time.time()
         try:
             for k, f in enumerate(frames):
@@ -360,10 +346,15 @@ def frames_job(body: dict = Body(...)):
                     eta = (time.time() - t0) / k * (len(frames) - k) if k else None
                     progress(k / len(frames), f"frame {f} ({k + 1} of {len(frames)})" + (f", about {eta:.0f} s left" if eta else ""))
                 _prep(src, [f] + (_refs(spec) if body.get("apply_pipeline") else []))
-                rows.append(worker.ask({"op": "frame_table", "spec": spec, "frame": f, "apply_pipeline": bool(body.get("apply_pipeline")),
-                                        "include_derived": bool(body.get("include_derived")), "dump_columns": dump_cols,
-                                        "raw_properties": info["properties"], "stats": want_stats,
-                                        "zip_path": str(OUT_DIR / zip_name) if zip_name else None}))
+                csv_path = OUT_DIR / f"frame_{f}_{uuid.uuid4().hex[:8]}.csv" if want_csv and HOSTED else None
+                row = worker.ask({"op": "frame_table", "spec": spec, "frame": f, "apply_pipeline": bool(body.get("apply_pipeline")),
+                                  "include_derived": bool(body.get("include_derived")), "dump_columns": dump_cols,
+                                  "raw_properties": info["properties"], "stats": want_stats,
+                                  "zip_path": str(OUT_DIR / zip_name) if zip_name else None, "csv_path": str(csv_path) if csv_path else None})
+                if csv_path:
+                    row["csv_bytes"] = csv_path.stat().st_size
+                    row["csv_url"] = _out_url(csv_path, "text/csv")
+                rows.append(row)
         except Exception:
             if zip_name:
                 (OUT_DIR / zip_name).unlink(missing_ok=True)
@@ -375,8 +366,10 @@ def frames_job(body: dict = Body(...)):
                     apply_pipeline=bool(body.get("apply_pipeline")), include_derived=bool(body.get("include_derived")),
                     modifiers=[m.get("type") for m in spec.get("modifiers") or [] if m.get("enabled", True)] if body.get("apply_pipeline") else [],
                     ovito=worker.info.get("ovito") if worker.info else None, seconds=round(time.time() - t0, 2))
-        return dict(zip=zip_name, bytes=(OUT_DIR / zip_name).stat().st_size if zip_name else 0, rows=rows, meta=meta)
-    return _job(f"ovito-frames:{token}", "OVITO exports frames" if want_csv else "OVITO computes frame statistics", run)
+        return dict(zip=zip_name, url=f"/api/ovito/file/{zip_name}" if zip_name else None,
+                    bytes=(OUT_DIR / zip_name).stat().st_size if zip_name else sum(r.get("csv_bytes", 0) for r in rows), rows=rows, meta=meta)
+    key = hashlib.sha1(json.dumps([frames, body.get("apply_pipeline"), body.get("include_derived"), want_csv, want_stats]).encode()).hexdigest()[:12]
+    return _job(f"ovito-frames:{token}:{key}", "OVITO exports frames" if want_csv else "OVITO computes frame statistics", run)
 
 
 @router.post("/frames/cancel/{token}")
@@ -471,6 +464,28 @@ def frames_xlsx(body: dict = Body(...)):
 
 
 # ---------------------------------------------------------------------------------------------- uploads
+_last_cleanup = [0.0]
+MAX_UPLOAD = int(os.environ.get("NANOCUT_MAX_UPLOAD", str(2 << 30)))
+
+
+@router.post("/upload-token")
+def upload_token(body: dict = Body(...)):
+    """Hosted: a client token that lets the browser upload one file straight to the private Blob store (nothing passes
+    through this function, so the 4.5 MB request limit does not apply). Returns where and how to upload it."""
+    if not (HOSTED and blobstore.enabled()):
+        raise HTTPException(404, "uploads go to this server (POST /api/ovito/upload/...)")
+    name, size = str(body.get("name") or ""), int(body.get("size") or 0)
+    if not re.fullmatch(r"[\w.\-]{1,200}", name) or name.startswith("."):
+        raise HTTPException(422, "invalid file name")
+    if not 0 < size <= MAX_UPLOAD:
+        raise HTTPException(413, f"files up to {MAX_UPLOAD / 2**30:.0f} GB can be uploaded to the hosted version")
+    if time.time() - _last_cleanup[0] > 3600:                # uploads and results are kept for a day
+        _last_cleanup[0] = time.time()
+        threading.Thread(target=blobstore.cleanup, daemon=True).start()
+    session = re.sub(r"[^0-9a-f]", "", str(body.get("session") or ""))[:16] or uuid.uuid4().hex[:16]
+    pathname = f"{blobstore.UPLOAD_PREFIX}{time.strftime('%Y%m%d')}/{session}/{name}"
+    return dict(pathname=pathname, token=blobstore.client_token(pathname, size), store=blobstore.store_id(), api=blobstore.API,
+                version=blobstore.VERSION, multipart=size > 64 << 20, part_size=8 << 20, session=session)
 @router.post("/upload/{sid}/{name}")
 async def upload(sid: str, name: str, request: Request, offset: int = 0):
     """Append one chunk of a file uploaded from the browser to this server's temporary folder (kept 24 hours).

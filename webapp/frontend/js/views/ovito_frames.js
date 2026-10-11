@@ -6,6 +6,7 @@
 import * as api from "../api.js";
 import { el, clear, num, bytes, toast, loading, errorState, download } from "../ui.js";
 import { LinePlot } from "../plot.js";
+import { ZipWriter } from "../zip.js";
 
 const STAT_LABEL = { n: "valid count", mean: "mean", std: "std", min: "min", max: "max" };
 const FORCE_COLS = [["mean_fx", "Mean Fx"], ["mean_fy", "Mean Fy"], ["mean_fz", "Mean Fz"], ["mean_magnitude", "Mean |F|"], ["magnitude_of_mean", "|Mean F|"],
@@ -101,16 +102,41 @@ export function buildFramesPanel(p, ctx) {
     running = true; update();
     token = Math.random().toString(16).slice(2) + Date.now().toString(16);
     const box = loading(csv ? `OVITO writes ${sel.frames.length} CSV files…` : `OVITO computes ${sel.frames.length} frames…`, true);
-    clear(status).append(box, el("button", { class: "btn ghost", type: "button", onclick: () => api.post(`/api/ovito/frames/cancel/${token}`).catch(() => {}) }, "Cancel"));
+    let cancelled = false;
+    clear(status).append(box, el("button", { class: "btn ghost", type: "button", onclick: () => { cancelled = true; api.post(`/api/ovito/frames/cancel/${token}`).catch(() => {}); } }, "Cancel"));
     const selection = { mode: E.mode, ...(E.mode === "interval" ? { interval: E.interval } : E.mode === "range" ? { start: E.start, end: E.end ?? n - 1, step: E.step } : { list: E.list }) };
+    const tag = E.mode === "interval" ? `interval_${E.interval}` : E.mode === "range" ? `range_${E.start}-${E.end ?? n - 1}_step_${E.step}` : `custom_${sel.frames.length}`;
+    const body = f => ({ spec: ctx.spec(), frames: f, apply_pipeline: E.apply, include_derived: E.derived, csv, stats: !csv, token });
     try {
-      const r = await api.job("/api/ovito/frames", { method: "POST", pollMs: 400, onProgress: x => box.update(x), timeoutMs: 24 * 3600e3,
-        data: { spec: ctx.spec(), frames: sel.frames, apply_pipeline: E.apply, include_derived: E.derived, csv, stats: !csv, token } });
+      let r;
+      if (!api.apiHosted()) {
+        r = await api.job("/api/ovito/frames", { method: "POST", pollMs: 400, onProgress: x => box.update(x), timeoutMs: 24 * 3600e3, data: body(sel.frames) });
+      } else {
+        // hosted: a few frames per request (each request has at most 300 s); CSVs come back as download URLs and the
+        // ZIP is assembled here, in the browser
+        const per = csv ? 2 : 8, zip = csv ? new ZipWriter() : null, t0 = performance.now();
+        r = { rows: [], meta: null, bytes: 0 };
+        for (let k = 0; k < sel.frames.length; k += per) {
+          if (cancelled) throw new Error(`cancelled after ${k} of ${sel.frames.length} frames`);
+          const eta = k ? (performance.now() - t0) / k * (sel.frames.length - k) / 1000 : null;
+          box.update({ progress: k / sel.frames.length, message: `frames ${k + 1}–${Math.min(sel.frames.length, k + per)} of ${sel.frames.length}${eta ? `, about ${eta < 90 ? Math.ceil(eta) + " s" : Math.ceil(eta / 60) + " min"} left` : ""}` });
+          const part = await api.job("/api/ovito/frames", { method: "POST", pollMs: 400, data: body(sel.frames.slice(k, k + per)) });
+          for (const row of part.rows) {
+            if (zip) await zip.add(`frame_${row.frame}.csv`, await (await fetch(api.resultUrl(row.csv_url))).blob());
+            r.rows.push(row);
+          }
+          r.meta = r.meta ? { ...r.meta, seconds: +(r.meta.seconds + part.meta.seconds).toFixed(2) } : part.meta;
+        }
+        const got = r.rows.map(x => x.frame).join(",");
+        if (got !== sel.frames.join(",")) throw new Error(`the server returned frames ${got}, expected ${sel.frames.join(",")}; nothing was saved`);
+        r.meta.frames = sel.frames;
+        if (zip) { r.blob = zip.finish(); r.bytes = r.blob.size; }
+      }
       clear(status);
       if (csv) {
-        const tag = E.mode === "interval" ? `interval_${E.interval}` : E.mode === "range" ? `range_${E.start}-${E.end ?? n - 1}_step_${E.step}` : `custom_${sel.frames.length}`;
-        const a = el("a", { href: api.apiUrl(`/api/ovito/file/${r.zip}`), download: `simulation_frames_${tag}.zip` });
+        const a = el("a", { href: r.blob ? URL.createObjectURL(r.blob) : api.resultUrl(r.url), download: `simulation_frames_${tag}.zip` });
         document.body.append(a); a.click(); a.remove();
+        if (r.blob) setTimeout(() => URL.revokeObjectURL(a.href), 60000);
         status.append(el("div", { class: "banner" }, `${r.rows.length} frames exported (${bytes(r.bytes)} ZIP, ${r.rows[0].columns.length} columns each, OVITO ${r.meta.seconds} s).`));
         toast(`ZIP with ${r.rows.length} CSV files is downloading.`, "ok");
       } else {
