@@ -236,6 +236,16 @@ if ost.get("available"):
           f"tool sum F = {np.round(tool, 4)}")
     xl = c.post("/api/ovito/frames/xlsx", json={"rows": fx["rows"], "meta": fx["meta"], "columns": ["c_pe", "fx"], "stats": ["mean"]})
     check("frame statistics Excel workbook", xl.status_code == 200 and xl.content[:2] == b"PK", f"{len(xl.content)} bytes")
+    # one file picked -> its numbered series (like OVITO); pile-up height = highest workpiece atom above the frame-0 surface
+    sq = c.get("/api/studio/scan", params={"path": "examples/sample_run/cut_SiC_R10_d10_preview_cut.2500.lammpstrj"}).json()["sequences"]
+    check("last file of a series opens the whole series", sq[0]["pattern"] == "cut_SiC_R10_d10_preview_cut.*.lammpstrj" and sq[0]["count"] == 3 and sq[1]["count"] == 1)
+    pu = job_result(wait("/api/ovito/pileup", "post", json={"spec": dict(lspec, frame=0, modifiers=[]), "frames": [2], "params": {"tool_types": [1]}}))["rows"][0]
+    w0 = pd.read_csv(dpath.replace("2500", "100"), sep=r"\s+", skiprows=9, header=None, names=dcols)
+    w0 = w0[w0["type"] != 1]
+    ysurf = float(np.median(w0.groupby(np.floor(w0.x / 10).astype(int) * 1_000_003 + np.floor(w0.z / 10).astype(int)).y.max()))
+    w2 = dump[dump["type"] != 1]
+    check("pile-up height equals pandas", abs(pu["surface_y"] - ysurf) < 1e-9 and abs(pu["highest"]["height"] - (w2.y.max() - ysurf)) < 1e-9,
+          f"H = {pu['highest']['height']:.4f} Å")
     check("OVITO live colours: 43,363 selected (tool) drawn in OVITO's selection colour", int((col == [255, 0, 0]).all(1).sum()) == 43363,
           f"{int((col == [255, 0, 0]).all(1).sum())} red")
 

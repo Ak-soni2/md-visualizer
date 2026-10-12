@@ -14,6 +14,7 @@ import { pickCodec, mp4Writer } from "../studio/movie.js";
 import { buildFramesPanel, exportDefaults } from "./ovito_frames.js";
 import { openHpc } from "./ovito_hpc.js";
 import { buildDbtPanel, dbtDefaults } from "./ovito_dbt.js";
+import { buildMeasurePanel, drawMeasures } from "./ovito_measure.js";
 
 const KEY = "nanocut.ovito.v2";
 const MODS = [
@@ -68,7 +69,7 @@ function load(raw) {
   for (const k of ["viewport", "render"]) d[k] = { ...d[k], ...(s[k] || {}) };
   d.render.anim = { ...defaults().render.anim, ...(s.render?.anim || {}) };
   d.overlays = { legend: { ...d.overlays.legend, ...(s.overlays?.legend || {}) }, tripod: { ...d.overlays.tripod, ...(s.overlays?.tripod || {}) }, labels: s.overlays?.labels || [] };
-  for (const k of ["last", "recent", "frame", "types", "cell", "modifiers", "live", "fps", "export", "dbt"]) if (s[k] !== undefined) d[k] = s[k];
+  for (const k of ["last", "recent", "frame", "types", "cell", "modifiers", "live", "fps", "export", "dbt", "measures", "measureSet", "sideTab", "lastDir"]) if (s[k] !== undefined) d[k] = s[k];
   d.modifiers = (d.modifiers || []).filter(m => MOD_LABEL[m.type]);
   return d;
 }
@@ -141,6 +142,14 @@ export async function render(root) {
 
   // ---------------------------------------------------------------------------------------------- state
   let src = null, info = null, fi = 0, frame = null, cam = null, scene = { center: [0, 0, 0], radius: 100 }, regimeMap = null;
+  let measureMode = null, measureA = null, measureDone = null;            // two-point measurement in the viewport
+  const srcKey = () => (src ? JSON.stringify([src.path, src.dir, src.pattern, src.remote, src.upload, src.blob?.[0]?.pathname]) : "");
+  function startMeasure(axis, done) {
+    if (!frame) { toast("Open a trajectory first.", "warn"); return; }
+    measureMode = axis; measureA = null; measureDone = done; stage.classList.add("measuring");
+    setHud("Measure: click the first particle (Esc cancels)");
+  }
+  function endMeasure() { measureMode = null; measureA = null; stage.classList.remove("measuring"); setHud(); requestDraw(); }
   let playing = false, loadTok = 0, alive = true, raf = 0, picked = null;
   const cache = new Map();                                             // frame -> promise of {meta, pos, col, rad, lines}
 
@@ -432,6 +441,8 @@ export async function render(root) {
     const rect = L.frame || L.full, dark = !L.frame || bg[0] < 0.5, ink = dark ? "#e9e6df" : "#111111";
     tripod(c, rect, mv, ink);
     if (frame.meta.legend) legend(c, rect, frame.meta.legend, ink);
+    const ms = (S.measures || []).filter(m => m.src === srcKey());
+    if (ms.length) drawMeasures(c, mv, W, H, ms, ink);
     if (picked != null) {
       const p = [frame.pos[3 * picked], frame.pos[3 * picked + 1], frame.pos[3 * picked + 2]], v = mv.vp;
       const w = v[3] * p[0] + v[7] * p[1] + v[11] * p[2] + v[15];
@@ -475,6 +486,19 @@ export async function render(root) {
     return best;
   }
   async function onClick(px, py) {
+    if (measureMode) {
+      const k = pick(px, py);
+      if (k == null) return;
+      try {
+        const v = (await api.post("/api/ovito/atom", { spec: spec(fi), index: frame.idx ? frame.idx[k] : k })).body.values;   // OVITO's exact position
+        const P = { id: v["Particle Identifier"] ?? null, x: v["Position.X"], y: v["Position.Y"], z: v["Position.Z"] };
+        if (!measureA) { measureA = P; setHud("Measure: click the second particle (Esc cancels)"); return; }
+        S.measures = S.measures || [];
+        S.measures.push({ src: srcKey(), frame: fi, axis: measureMode, a: measureA, b: P });
+        save(); const done = measureDone; endMeasure(); done?.(); refreshSide("measure");
+      } catch (e) { toast(e.message, "err"); }
+      return;
+    }
     const i = pick(px, py);
     picked = i; requestDraw();
     if (i == null) { pickHud.hidden = true; frame.pickedRow = null; refreshSide("results"); return; }
@@ -519,6 +543,7 @@ export async function render(root) {
   ovc.addEventListener("dblclick", () => zoomAll());
   const onKey = e => {
     if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName) || e.altKey || e.ctrlKey || e.metaKey || !src) return;
+    if (e.key === "Escape" && measureMode) { endMeasure(); return; }
     if (e.key === " ") { e.preventDefault(); playing ? stop() : play(); }
     if (e.key === ",") step(-1);
     if (e.key === ".") step(1);
@@ -588,16 +613,21 @@ export async function render(root) {
   function stop() { playing = false; playBtn.replaceChildren(svg("play")); playBtn.setAttribute("aria-label", "Play"); }
 
   // ---------------------------------------------------------------------------------------------- side panels
-  const T = tabs([{ id: "pipeline", label: "Pipeline" }, { id: "render", label: "Render" }, { id: "frames", label: "Export" }, { id: "dbt", label: "Ductile–brittle" }, { id: "results", label: "Results" }, { id: "more", label: "More" }], id => refreshSide(id));
+  const T = tabs([{ id: "pipeline", label: "Pipeline" }, { id: "render", label: "Render" }, { id: "frames", label: "Export" }, { id: "dbt", label: "Ductile–brittle" }, { id: "measure", label: "Measure" }, { id: "results", label: "Results" }, { id: "more", label: "More" }],
+    id => { S.sideTab = id; save(); refreshSide(id); });                  // the open tab is remembered
   side.append(T.bar, ...Object.values(T.panels));
   const builders = { pipeline: buildPipeline, render: buildRender, results: buildResults, more: buildMore,
     frames: p => buildFramesPanel(p, { S, save, info: () => info, spec: () => spec(fi), frameMeta: () => frame?.meta }),
+    measure: p => buildMeasurePanel(p, { S, save, info: () => info, spec: () => spec(fi), frameIndex: () => fi, srcKey, startMeasure, redraw: requestDraw }),
     dbt: p => buildDbtPanel(p, { S, save, info: () => info, spec: () => spec(fi), setRegime: m => { regimeMap = m; setHud(); },
       showDamage: types => {                                            // tool removed, structure types coloured: damage visible while playing
         S.modifiers = [{ type: "select_type", types: [...types], enabled: true }, { type: "delete_selected", enabled: true }, { type: "identify_diamond", enabled: true }];
         refreshSide("pipeline"); cache.clear(); changed(); if (!S.live) loadFrame(fi);
       } }) };
-  function buildSide() { for (const id of Object.keys(builders)) refreshSide(id, true); }
+  function buildSide() {
+    if (S.sideTab && builders[S.sideTab]) T.select(S.sideTab);            // reopen the tab used last
+    for (const id of Object.keys(builders)) refreshSide(id, true);
+  }
   function refreshSide(id, force) {
     for (const k of id ? [id] : Object.keys(builders)) { const p = T.panels[k]; if (force || !p.hidden) { clear(p); builders[k](p); } }
   }
@@ -613,6 +643,11 @@ export async function render(root) {
   function buildPipeline(p) {
     if (!info) { p.append(el("p", { class: "muted" }, "Upload dump files or open a path first.")); return; }
     refreshProps(); p.append(propList);
+    const where = src.remote ? "streamed from the HPC over SSH into memory (no copy on disk)" : src.blob ? "private upload store" : src.upload ? "uploaded copy on this server" : "read in place (no copy)";
+    p.append(el("section", { class: "st-sec" }, el("h4", {}, "Data source"),
+      el("dl", { class: "kv" }, el("dt", {}, "Files"), el("dd", { class: "mono" }, src.pattern || ""), el("dt", {}, "Folder"), el("dd", { class: "mono" }, src.dir || src.path || (src.remote ? "HPC" : "—")),
+        el("dt", {}, "Frames"), el("dd", {}, `${num(info.num_frames)} (timeline 0 … ${num(info.num_frames - 1)})`), el("dt", {}, "Particles"), el("dd", {}, num(info.count)),
+        el("dt", {}, "Storage"), el("dd", {}, where))));
     p.append(sec("Live update",
       chk("Re-evaluate with OVITO on every change", S.live, v => { S.live = v; save(); refreshSide("pipeline"); }, "Off: change several settings, then press Apply"),
       S.live ? null : el("button", { class: "btn primary", type: "button", onclick: () => { cache.clear(); loadFrame(fi); } }, "Apply")));

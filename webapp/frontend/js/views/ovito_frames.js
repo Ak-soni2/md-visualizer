@@ -11,7 +11,7 @@ import { ZipWriter } from "../zip.js";
 const STAT_LABEL = { n: "valid count", mean: "mean", std: "std", min: "min", max: "max" };
 const FORCE_COLS = [["mean_fx", "Mean Fx"], ["mean_fy", "Mean Fy"], ["mean_fz", "Mean Fz"], ["mean_magnitude", "Mean |F|"], ["magnitude_of_mean", "|Mean F|"],
   ["sum_fx", "Sum Fx"], ["sum_fy", "Sum Fy"], ["sum_fz", "Sum Fz"]];
-export const exportDefaults = () => ({ mode: "interval", interval: 20, start: 0, end: null, step: 20, list: "", apply: false, derived: false, stats: ["mean"], cols: null });
+export const exportDefaults = () => ({ mode: "interval", interval: 20, start: 0, end: null, step: 20, list: "", apply: false, derived: true, stats: ["n", "mean", "std", "min", "max"], cols: null });
 
 /** Frames chosen by the settings E for a trajectory with n frames: {frames (sorted, unique, all valid), errors, warnings}. */
 export function selectFrames(E, n) {
@@ -88,7 +88,7 @@ export function buildFramesPanel(p, ctx) {
     el("section", { class: "st-sec" }, el("h4", {}, "Frame selection"), row("Mode", modeSel), modeBox, summary,
       el("button", { class: "btn ghost", type: "button", onclick: () => listModal(sel.frames) }, "Preview selected frames")),
     el("section", { class: "st-sec" }, el("h4", {}, "Data"),
-      el("label", { class: "check", "data-tip": "Off: the columns exactly as read from the dump file" }, el("input", { type: "checkbox", checked: E.apply, onchange: e => { E.apply = e.target.checked; ctx.save(); } }),
+      ctx.noPipeline ? null : el("label", { class: "check", "data-tip": "Off: the columns exactly as read from the dump file" }, el("input", { type: "checkbox", checked: E.apply, onchange: e => { E.apply = e.target.checked; ctx.save(); } }),
         "Apply the OVITO pipeline (modifiers of the Pipeline tab)"),
       el("label", { class: "check", "data-tip": "Values OVITO computes while reading, which are not in the dump (e.g. Velocity Magnitude)" }, el("input", { type: "checkbox", checked: E.derived, onchange: e => { E.derived = e.target.checked; ctx.save(); } }),
         "Include columns derived by OVITO (not in the dump)"),
@@ -115,7 +115,7 @@ export function buildFramesPanel(p, ctx) {
     clear(status).append(box, el("button", { class: "btn ghost", type: "button", onclick: () => { cancelled = true; api.post(`/api/ovito/frames/cancel/${token}`).catch(() => {}); } }, "Cancel"));
     const selection = { mode: E.mode, ...(E.mode === "interval" ? { interval: E.interval } : E.mode === "range" ? { start: E.start, end: E.end ?? n - 1, step: E.step } : { list: E.list }) };
     const tag = E.mode === "interval" ? `interval_${E.interval}` : E.mode === "range" ? `range_${E.start}-${E.end ?? n - 1}_step_${E.step}` : `custom_${sel.frames.length}`;
-    const body = f => ({ spec: ctx.spec(), frames: f, apply_pipeline: E.apply, include_derived: E.derived, csv, stats: !csv, token, save_to: saveTo });
+    const body = f => ({ spec: ctx.spec(), frames: f, apply_pipeline: E.apply && !ctx.noPipeline, include_derived: E.derived, csv, stats: !csv, token, save_to: saveTo });
     try {
       let r;
       if (!api.apiHosted()) {
@@ -173,7 +173,7 @@ function statsModal(r, selection, E, save) {
   const rows = r.rows, cols = Object.keys(rows[0].stats || {}), origin = Object.fromEntries((rows[0].columns || []).map(c => [c.name, c.origin]));
   const types = Object.keys(rows[0].force_by_type || {});
   const hasForce = rows.some(x => x.force?.n_valid != null);
-  if (!E.cols || !E.cols.some(c => cols.includes(c))) E.cols = cols.filter(c => !["id", "type", "mol"].includes(c));
+  if (!E.cols || !E.cols.some(c => cols.includes(c))) E.cols = [...cols];          // everything available, unless narrowed
   const chosen = new Set(E.cols.filter(c => cols.includes(c))), stats = new Set(E.stats);
   const v = x => x == null ? "—" : num(x, 6);
   const group = ["all", ...types];

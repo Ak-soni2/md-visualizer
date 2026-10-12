@@ -414,6 +414,9 @@ def op_frame_table(req):
                 df.to_csv(io.TextIOWrapper(f, encoding="utf-8", newline=""), index=False)   # floats as Python repr: exact
     if req.get("stats"):
         out["stats"] = {h: _stats(a) for h, _, _, a in cols if a.dtype != object}
+        if P.particle_types is not None:                        # every column also per particle type
+            tt = np.asarray(P.particle_types)
+            out["stats_by_type"] = {str(int(t)): {h: _stats(a[tt == t]) for h, _, _, a in cols if a.dtype != object} for t in np.unique(tt)}
         has = "Force" in P
         F = np.asarray(P["Force"], dtype=np.float64) if has else None
 
@@ -551,8 +554,56 @@ def op_regime(req):
     return out
 
 
+def op_pileup(req):
+    """Pile-up height for one frame (tool removed): the original surface is the median, over 10 Å x 10 Å columns, of the
+    highest workpiece atom in frame 0; the pile-up height is how far the highest workpiece atom of this frame rises
+    above it (overall, ahead of the cutting edge = chip/front pile-up, behind it = burr/side pile-up on the machined
+    surface), with the atom's identifier and position; plus the atoms higher than surface + threshold and their extent."""
+    src, frame, prm = req["spec"]["source"], int(req["frame"]), req["params"]
+    pl = _raw_pipeline(src)
+    tool_types = [int(t) for t in prm.get("tool_types") or []]
+    thr = float(prm.get("threshold", 1.0))
+    data = pl.compute(frame)
+    P = data.particles
+    pos = np.asarray(P.positions, dtype=np.float64)
+    typ = np.asarray(P.particle_types) if P.particle_types is not None else np.ones(P.count, int)
+    ids = np.asarray(P.identifiers) if P.identifiers is not None else np.arange(1, P.count + 1)
+    tool = np.isin(typ, tool_types)
+    wp = ~tool
+    key = (src["import_path"], tuple(tool_types))
+    if key not in _surface_level:
+        d0 = pl.compute(0)
+        p0, t0 = np.asarray(d0.particles.positions, dtype=np.float64), np.asarray(d0.particles.particle_types)
+        w0 = ~np.isin(t0, tool_types)
+        _surface_level[key] = _top_median(p0[w0, 0], p0[w0, 2], p0[w0, 1])
+    ys = _surface_level[key]
+    out = dict(frame=frame, step=_jsonable(data.attributes.get("Timestep")), surface_y=ys, threshold=thr, workpiece_atoms=int(wp.sum()))
+
+    def top(mask, name):
+        if not mask.any():
+            out[name] = None
+            return
+        i = np.nonzero(mask)[0][np.argmax(pos[mask, 1])]
+        out[name] = dict(height=float(pos[i, 1] - ys), id=int(ids[i]), x=float(pos[i, 0]), y=float(pos[i, 1]), z=float(pos[i, 2]))
+    top(wp, "highest")
+    if tool.any():
+        sign = -1.0 if prm.get("direction", "-x") == "-x" else 1.0
+        tip = float(pos[tool, 0].min() if sign < 0 else pos[tool, 0].max())
+        ahead = wp & ((pos[:, 0] - tip) * sign > 0)
+        out.update(tip_x=tip, tool_bottom_y=float(pos[tool, 1].min()), depth_of_cut=float(ys - pos[tool, 1].min()))
+        top(ahead, "ahead")
+        top(wp & ~ahead, "behind")
+    above = wp & (pos[:, 1] > ys + thr)
+    out["above_count"] = int(above.sum())
+    if above.any():
+        a = pos[above]
+        out.update(above_x=[float(a[:, 0].min()), float(a[:, 0].max())], above_z=[float(a[:, 2].min()), float(a[:, 2].max())],
+                   above_width_z=float(a[:, 2].max() - a[:, 2].min()), above_volume_atoms=int(above.sum()))
+    return out
+
+
 OPS = {"hello": lambda r: dict(ovito=ovito.version_string, pid=os.getpid()), "info": op_info, "run": op_run, "frame_table": op_frame_table,
-       "regime": op_regime,
+       "regime": op_regime, "pileup": op_pileup,
        "export": op_export, "displacements": op_displacements, "live": op_live, "atom": op_atom}
 
 for line in sys.stdin:

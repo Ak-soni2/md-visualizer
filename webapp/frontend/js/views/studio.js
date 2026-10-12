@@ -9,6 +9,7 @@ import { MODIFIERS, newModifier, evaluate, neededColumns, displacementRef, GRADI
 import { drawOverlays, defaultOverlays, ALIGNS, measureValue, fmtVal } from "../studio/overlays.js";
 import { serverSource, browserSource } from "../studio/source.js";
 import { canEncode, canWriteFolder, pickCodec, mp4Writer, pngFolderWriter } from "../studio/movie.js";
+import { buildFramesPanel, exportDefaults } from "./ovito_frames.js";
 
 const KEY = "nanocut.studio.v1";
 const defaults = () => ({
@@ -17,7 +18,7 @@ const defaults = () => ({
     movie: { from: 0, to: null, every: 1, fps: 10, format: "mp4", quality: "high" } },
   viewport: { proj: "ortho", rscale: 1, flat: false, cell: false, view: "Top" },
   analysis: { normal: "y", width: "z", surface: null, thr: 1 },
-  measureAxis: "y", recent: [], last: null,
+  measureAxis: "y", recent: [], last: null, sideTab: "pipeline", lastDir: "", export: exportDefaults(),
 });
 function loadSession(raw) {
   const d = defaults();
@@ -33,6 +34,8 @@ function loadSession(raw) {
   d.pipeline = d.pipeline.filter(m => MODIFIERS[m.type]);
   d.overlays.measures = (d.overlays.measures || []).filter(m => m.source);   // lines from before they were tied to a trajectory
   d.types = s.types || {}; d.measureAxis = s.measureAxis || "y"; d.last = s.last || null;
+  for (const k of ["sideTab", "lastDir"]) if (typeof s[k] === "string") d[k] = s[k];
+  d.export = { ...exportDefaults(), ...(s.export || {}) };
   return d;
 }
 const strip = (k, v) => (k.startsWith("_") ? undefined : v);
@@ -71,8 +74,11 @@ export async function render(root) {
   const openBtn = el("button", { class: "btn", type: "button", "data-tip": "Folder or file the backend can read (the bundled runs on the hosted version)" }, "Open path");
   const pickDir = el("input", { type: "file", webkitdirectory: "", multiple: true, hidden: true, onchange: e => { scanFiles(e.target.files); e.target.value = ""; } });
   const pickFiles = el("input", { type: "file", multiple: true, hidden: true, onchange: e => { scanFiles(e.target.files); e.target.value = ""; } });
-  const dirBtn = el("button", { class: "btn primary", type: "button", "data-tip": "Read a folder of dumps from this computer in the browser. Nothing is uploaded.", onclick: () => pickDir.click() }, "Open folder…");
-  const filesBtn = el("button", { class: "btn", type: "button", "data-tip": "One multi-frame dump, or several frame files (also .gz). Read in the browser.", onclick: () => pickFiles.click() }, "Open files…");
+  const localDlg = live && !api.apiHosted();
+  const openFolder = () => (localDlg ? localPick("folder") : pickDir.click());
+  const openFiles = () => (localDlg ? localPick("files") : pickFiles.click());
+  const dirBtn = el("button", { class: "btn primary", type: "button", "data-tip": localDlg ? "Choose a folder on this computer; read in place, nothing is copied" : "Read a folder of dumps from this computer in the browser. Nothing is uploaded.", onclick: openFolder }, "Open folder…");
+  const filesBtn = el("button", { class: "btn", type: "button", "data-tip": localDlg ? "Choose one file (its numbered series is detected, like OVITO) or several; read in place" : "One multi-frame dump, or several frame files (also .gz). Read in the browser.", onclick: openFiles }, localDlg ? "Open file(s)…" : "Open files…");
   if (!live) { pathIn.hidden = true; openBtn.hidden = true; }
   const bar = el("div", { class: "st-bar" }, svg("folder"), dirBtn, filesBtn, pickDir, pickFiles, pathIn, pathList, openBtn, seqSel, el("span", { class: "st-src muted" }));
   const glc = el("canvas", { class: "gl", "aria-hidden": "true" });
@@ -103,6 +109,18 @@ export async function render(root) {
   }
   fillPaths();
 
+  /** local backend: system dialog -> real path -> the backend reads the dumps in place */
+  async function localPick(kind) {
+    let r;
+    try { r = (await api.post("/api/local/pick", { kind, start: S.lastDir || "" }, 1800000)).body; }
+    catch (e) { if (e.status === 501) { toast("No system dialog here: reading in the browser instead.", "warn"); (kind === "folder" ? pickDir : pickFiles).click(); } else toast(e.message, "err"); return; }
+    const paths = kind === "folder" ? (r.path ? [r.path] : []) : r.paths || [];
+    if (!paths.length) return;
+    const dir = kind === "folder" ? paths[0] : paths[0].replace(/[\\/][^\\/]*$/, "");
+    S.lastDir = dir; save();
+    const target = kind === "folder" || paths.length > 1 ? dir : paths[0];   // one file: its whole numbered series is offered first
+    pathIn.value = target; scanAndOpen(target);
+  }
   async function scanAndOpen(path) {
     path = (path || "").trim().replace(/^"|"$/g, "");
     if (!path) { toast("Enter a folder or a dump file path.", "warn"); pathIn.focus(); return; }
@@ -422,7 +440,7 @@ export async function render(root) {
     showState(el("div", { class: "state st-start" },
       el("b", {}, "Open a trajectory"),
       el("span", {}, "Open folder… reads the LAMMPS dumps of a folder on this computer (searched two levels deep) directly in the browser: nothing is uploaded and files are only read. Open files… takes one multi-frame dump or several frame files, also .gz."),
-      el("div", { class: "field-row" }, el("button", { class: "btn primary", type: "button", onclick: () => pickDir.click() }, "Open folder…"), el("button", { class: "btn", type: "button", onclick: () => pickFiles.click() }, "Open files…")),
+      el("div", { class: "field-row" }, el("button", { class: "btn primary", type: "button", onclick: openFolder }, "Open folder…"), el("button", { class: "btn", type: "button", onclick: openFiles }, localDlg ? "Open file(s)…" : "Open files…")),
       live && S.last && !S.last.local ? el("button", { class: "btn", type: "button", onclick: pick(S.last.path) }, `Reopen ${S.last.path}`) : null,
       runs.length ? el("span", { class: "muted small" }, "Or a run the backend can read:") : null,
       runs.length ? el("div", { class: "chips" }, runs.map(s => el("button", { class: "chip", type: "button", onclick: pick(s.path) }, s.label, el("span", { class: "n" }, `${s.n_frames} frames`)))) : null));
@@ -457,10 +475,25 @@ export async function render(root) {
   function stop() { playing = false; playBtn.replaceChildren(svg("play")); playBtn.setAttribute("aria-label", "Play"); }
 
   // ---------------------------------------------------------------------------------------------- side panels
-  const T = tabs([{ id: "pipeline", label: "Pipeline" }, { id: "overlays", label: "Overlays" }, { id: "render", label: "Render" }, { id: "analysis", label: "Pile-up" }, { id: "data", label: "Data" }], id => refreshSide(id));
+  const T = tabs([{ id: "pipeline", label: "Pipeline" }, { id: "overlays", label: "Overlays" }, { id: "render", label: "Render" }, { id: "analysis", label: "Pile-up" },
+    { id: "export", label: "Export" }, { id: "data", label: "Data" }], id => { S.sideTab = id; save(); refreshSide(id); });   // the open tab is remembered
   side.append(T.bar, ...Object.values(T.panels));
-  const builders = { pipeline: buildPipeline, overlays: buildOverlays, render: buildRender, analysis: buildAnalysis, data: buildData };
-  function buildSide() { for (const id of Object.keys(builders)) refreshSide(id, true); }
+  const builders = { pipeline: buildPipeline, overlays: buildOverlays, render: buildRender, analysis: buildAnalysis, export: buildExport, data: buildData };
+  function buildSide() {
+    if (S.sideTab && builders[S.sideTab]) T.select(S.sideTab);
+    for (const id of Object.keys(builders)) refreshSide(id, true);
+  }
+  // -- export: frames through OVITO from the files on disk (exact values, all columns); needs a path the backend reads
+  function buildExport(p) {
+    if (!src) { p.append(el("p", { class: "muted" }, "Open a trajectory first.")); return; }
+    if (SRC !== serverSource || !live) {
+      p.append(el("p", { class: "muted" }, localDlg ? "This trajectory was read inside the browser. Open it with Open folder… / Open file(s)… (read in place by the backend) to export it."
+        : "Exports run on the backend: open the files on the OVITO page (Upload) to export them from the hosted site."));
+      return;
+    }
+    buildFramesPanel(p, { S, save, info: () => ({ num_frames: src.n_frames, count: src.natoms }), spec: () => ({ source: { path: src.dir, pattern: src.pattern }, frame: fi, types: {}, cell: false, modifiers: [] }),
+      frameMeta: () => (frame ? { count: frame.n } : null), noPipeline: true });   // the dump's own columns
+  }
   function refreshSide(id, force) {
     const ids = id ? [id] : Object.keys(builders);
     for (const k of ids) { const p = T.panels[k]; if (force || !p.hidden) { clear(p); builders[k](p); } }
@@ -874,6 +907,7 @@ export async function render(root) {
   buildSide();
   resize();
   startState();
+  if (localDlg && S.last?.path && !S.last.local) { pathIn.value = S.last.path; scanAndOpen(S.last.path); }   // reopen where you left off
 
   return () => { alive = false; playing = false; ro.disconnect(); document.removeEventListener("keydown", onKey); cancelAnimationFrame(raf); };
 }

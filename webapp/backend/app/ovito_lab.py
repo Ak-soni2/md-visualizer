@@ -396,6 +396,43 @@ REGIME_PARAMS = {"probe_radius": (1.0, 10.0), "ahead": (0.0, 2000.0), "behind": 
                  "min_fragment": (1, 1e7)}
 
 
+@router.post("/pileup")
+def pileup_job(body: dict = Body(...)):
+    """Pile-up height per selected frame (ovito_worker.op_pileup). body: {spec, frames, params: {tool_types, threshold, direction}, token}."""
+    try:
+        spec = _spec(body)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    try:
+        frames = sorted({int(f) for f in body.get("frames") or []})
+    except (TypeError, ValueError):
+        raise HTTPException(422, "frames must be integers")
+    if not frames or len(frames) > MAX_FRAMES:
+        raise HTTPException(422, "select between 1 and 100000 frames")
+    raw = body.get("params") or {}
+    prm = {"tool_types": [int(t) for t in raw.get("tool_types") or []], "direction": "+x" if raw.get("direction") == "+x" else "-x",
+           "threshold": float(raw.get("threshold", 1.0))}
+    if not 0 <= prm["threshold"] <= 100:
+        raise HTTPException(422, "threshold must be within 0 … 100 Å")
+    token, src = str(body.get("token") or uuid.uuid4().hex), spec["source"]
+
+    def run(progress=None):
+        rows, t0 = [], time.time()
+        try:
+            for k, f in enumerate(frames):
+                if token in _cancel:
+                    raise RuntimeError(f"cancelled after {k} of {len(frames)} frames")
+                if progress:
+                    progress(k / len(frames), f"frame {f} ({k + 1} of {len(frames)})")
+                _prep(src, [f])
+                rows.append(worker.ask({"op": "pileup", "spec": spec, "frame": f, "params": prm}))
+        finally:
+            _cancel.discard(token)
+        return dict(rows=rows, params=prm, seconds=round(time.time() - t0, 2))
+    key = hashlib.sha1(json.dumps([frames, prm]).encode()).hexdigest()[:12]
+    return _job(f"ovito-pileup:{token}:{key}", "OVITO measures the pile-up", run)
+
+
 @router.post("/regime")
 def regime_job(body: dict = Body(...)):
     """Ductile/brittle indicators for the selected frames (ovito_worker.op_regime). body: {spec, frames, params, token}."""
@@ -455,6 +492,7 @@ def frames_xlsx(body: dict = Body(...)):
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
     rows, meta = body.get("rows") or [], body.get("meta") or {}
+    label_by = {"n": "valid count", "mean": "mean", "std": "std (population)", "min": "min", "max": "max"}
     chosen = [c for c in body.get("columns") or [] if isinstance(c, str)]
     stat_keys = [s for s in body.get("stats") or ["mean"] if s in ("n", "mean", "std", "min", "max")] or ["mean"]
     if not rows:
@@ -491,6 +529,12 @@ def frames_xlsx(body: dict = Body(...)):
               ("Positions, velocities, forces", lambda c: c in ("x", "y", "z", "xu", "yu", "zu", "vx", "vy", "vz", "fx", "fy", "fz") or c.split(".")[0] in ("Position", "Velocity", "Force", "Velocity Magnitude")),
               ("Other properties", lambda c: True)]
     meta_ws = wb.create_sheet("Export Metadata")             # sheet 2; filled at the end
+    tkeys = sorted({t for r in rows for t in (r.get("stats_by_type") or {})}, key=int)
+    if tkeys and chosen:                                       # every chosen column per particle type, one row per frame and type
+        sheet(wb.create_sheet("Columns by particle type"), ["Frame", "Timestep", "Particle type", "Particles"] + [f"{c} {label_by[s_]}" for c in chosen for s_ in stat_keys],
+              [[r["frame"], r.get("timestep"), int(t), ((r.get("stats_by_type") or {}).get(t, {}).get(chosen[0]) or {}).get("n")] +
+               [(((r.get("stats_by_type") or {}).get(t) or {}).get(c) or {}).get(s_) for c in chosen for s_ in stat_keys]
+               for r in rows for t in tkeys if t in (r.get("stats_by_type") or {})])
     if by_type_ws:
         tnames = {t: next(((r.get("force_by_type") or {}).get(t, {}).get("name") for r in rows if (r.get("force_by_type") or {}).get(t)), "") for t in by_type_ws[0]}
         sheet(wb.create_sheet("Force by particle type"), ["Frame", "Timestep"] +

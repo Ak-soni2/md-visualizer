@@ -16,7 +16,7 @@ Hosted version: https://md-simulator.vercel.app (see *Deployment*).
 
 Checks (all against real or synthetic data with known answers):
 ```bat
-.venv\Scripts\python webapp\backend\selfcheck.py          :: 52 API checks on the project data
+.venv\Scripts\python webapp\backend\selfcheck.py          :: 54 API checks on the project data
 .venv\Scripts\python webapp\tools\check_dump_reader.py    :: browser dump reader = backend reader (needs Node.js)
 .venv\Scripts\python webapp\tools\check_regime.py         :: ductile/brittle indicators on synthetic defects
 .venv\Scripts\python webapp\tools\check_remote.py         :: HPC connection against a test SFTP server
@@ -141,6 +141,22 @@ OVITO derives (e.g. Velocity Magnitude) only on request; with *Apply the OVITO p
 table, chart, and an **Excel** workbook (Frame Statistics, Export Metadata, Force by particle type, one sheet per column
 group: c_ computes, f_ fixes, v_ variables, displacement, positions/velocities/forces, others) with the chosen columns
 and statistics.
+
+## Measure (OVITO page, "Measure" tab)
+
+- **Pile-up height, automatic:** tool type(s) removed; original surface = median over 10 Å × 10 Å columns of the highest
+  workpiece atom in frame 0; H = highest workpiece atom of the frame above it, overall, ahead of the cutting edge
+  (chip / front pile-up) and behind it (burr / side pile-up), with the atom's id and position, atoms above surface +
+  threshold and their width; for this frame or every n-th frame (chart, CSV). *Show H in viewport* draws it.
+- **Between two particles:** *Pick two particles*, click two atoms: height Δy, Δx, Δz or distance from OVITO's exact
+  positions, drawn as a dimension line; kept per trajectory (CSV).
+
+Opening one file of a numbered series (e.g. the last `dump.cutsic.600.lammpstrj`) opens the whole series with its
+timeline, as OVITO does; the single file stays selectable. The open side tab, the trajectory, the frame, measurements
+and settings are remembered and restored on reload (OVITO page and Studio). The Studio has the same **Export** tab
+(when its files are read by the local backend: Open folder… / Open file(s)…, read in place). Exports include every
+column by default (also columns OVITO derives, e.g. Velocity Magnitude) and all statistics; the Excel file adds a
+"Columns by particle type" sheet with every column per type.
 
 ## Ductile–brittle regime (OVITO page, "Ductile–brittle" tab)
 
@@ -271,6 +287,6 @@ uses full data); frame exports and regime analyses run in batches; HPC and local
   file; values are float32 (≈1e-4 Å at 1000 Å). In the browser a 2-million-atom frame takes ~1 GB of memory while parsed
   (2 frames are cached instead of 3). It covers the OVITO features
   used for burr, pile-up and displacement figures.
-- Self-check: 52 checks; plus check_dump_reader, check_regime, check_remote.
+- Self-check: 54 checks; plus check_dump_reader, check_regime, check_remote.
 - Authentication is not implemented: the hosted API is public (read-only, serves only the bundled files).
   Locally, bind to 127.0.0.1 (default) unless deployed behind access control.

@@ -74,8 +74,17 @@ def scan(path_str, max_depth=2):
     if p.is_file():
         if not is_dump(p):
             raise ValueError("not a LAMMPS text dump (first line is not 'ITEM: TIMESTEP')")
-        return dict(path=str(p), sequences=[dict(dir=str(p.parent), pattern=p.name, count=1, bytes=p.stat().st_size,
-                                                 first=p.name, last=p.name, single=True)])
+        one = dict(dir=str(p.parent), pattern=p.name, count=1, bytes=p.stat().st_size, first=p.name, last=p.name, single=True)
+        m = NUM_RE.match(p.name)                                 # like OVITO: one file of a numbered series -> the whole series
+        if m:
+            pattern = f"{m.group(1)}*{m.group(3)}"
+            files = _sequence_files(str(p.parent), pattern)
+            if len(files) > 1:
+                names = [os.path.basename(f) for f in files]
+                seq = dict(dir=str(p.parent), pattern=pattern, count=len(files), bytes=sum(os.path.getsize(f) for f in files),
+                           first=names[0], last=names[-1], single=False, detected_from=p.name)
+                return dict(path=str(p), sequences=[seq, one])
+        return dict(path=str(p), sequences=[one])
     groups, seen = {}, 0
     base_depth = len(p.parts)
     for root, dirs, files in os.walk(p):
