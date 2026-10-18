@@ -47,8 +47,10 @@ Visual C++ runtime DLLs + the application folders. The launcher (`launcher/NanoC
 
 ```
 %LOCALAPPDATA%\Programs\NanoCut\
-  NanoCut.exe       launcher: starts the backend hidden, opens the app window (Edge/Chrome app mode), stops it on close,
-                    checks for updates
+  NanoCut.exe       launcher: starts the backend hidden, opens the app window (Edge/Chrome app mode) only once the
+                    backend answers, stays in the notification area (double-click = open again; right-click = logs,
+                    quit), stops the backend ~3 min after the last window closed (never during a job), restarts a
+                    crashed backend, checks for updates
   Uninstall.exe     removes the folder, shortcuts and the Apps & features entry
   version.txt       installed version
   python\           the bundled Python with all packages

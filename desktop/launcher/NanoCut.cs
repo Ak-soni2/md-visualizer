@@ -2,9 +2,10 @@
 // that ships with Windows; no other tool or runtime is needed.
 //
 // Starts the bundled Python backend (python\python.exe -m uvicorn webapp.backend.app.main:app) hidden on a free local
-// port, waits until it answers, opens the workstation in its own app window (Microsoft Edge or Chrome in app mode with a
-// private profile; otherwise the default browser plus a small control window), and stops the backend when the window is
-// closed. One instance at a time. Log: %LOCALAPPDATA%\NanoCut\logs\launcher.log and server.log.
+// port, waits until it answers, opens the workstation in its own app window (Edge or Chrome app mode, else the default
+// browser), sits in the notification area (open again / logs / quit), and stops the backend a few minutes after the last
+// window was closed: open pages poll /api/health, the launcher reads /api/desktop/idle. A crashed backend is restarted.
+// A second start waits until the backend answers before opening a window. One instance at a time. Log: %LOCALAPPDATA%\NanoCut\logs\launcher.log and server.log.
 //
 //   NanoCut.exe            normal start
 //   NanoCut.exe --check    start the backend, check /api/health and /api/ovito/status, stop; exit code 0 = OK
@@ -145,68 +146,129 @@ static class NanoCut
         finally { StopServer(); }
     }
 
+    static int Port;
+    static string Url, BrowserExe;
+    static NotifyIcon Tray;
+    const int IdleLimitS = 180;                 // no request from any window for this long (page polls every 15 s) -> stop
+    const int StartTimeoutS = 300;              // first start on a new PC can be slow (antivirus scans ~10,000 files)
+
+    static void OpenWindow()
+    {
+        try
+        {
+            if (BrowserExe != null)
+                Process.Start(new ProcessStartInfo(BrowserExe, string.Format("--app=\"{0}\" --user-data-dir=\"{1}\" --no-first-run --no-default-browser-check --window-size=1440,900",
+                    Url, Path.Combine(DataDir, "window"))) { UseShellExecute = false });
+            else Process.Start(Url);
+            Log("window opened " + (BrowserExe ?? "default browser") + " " + Url);
+        }
+        catch (Exception e) { Log("open window: " + e.Message); try { Process.Start(Url); } catch { } }
+    }
+
+    static bool Healthy(int port)
+    {
+        try { Get("http://127.0.0.1:" + port + "/api/health", 3000); return true; } catch { return false; }
+    }
+
     [STAThread]
     static int Main(string[] args)
     {
         Directory.CreateDirectory(LogDir);
         bool check = Array.IndexOf(args, "--check") >= 0, useBrowser = Array.IndexOf(args, "--browser") >= 0;
         if (check) return Check();
+        Application.EnableVisualStyles();
+        BrowserExe = useBrowser ? null : FindBrowser();
+        string portFile = Path.Combine(DataDir, "port.txt");
         bool first;
         using (var mutex = new Mutex(true, @"Local\NanoCutWorkstation", out first))
         {
-            string portFile = Path.Combine(DataDir, "port.txt");
             if (!first)
             {
-                try { Process.Start("http://127.0.0.1:" + File.ReadAllText(portFile).Trim() + "/app/"); } catch { }
+                // NanoCut Studio is already starting or running: wait until its server answers, then open a window.
+                // (Opening the page before the server listens is what shows "refused to connect".)
+                var sw = Stopwatch.StartNew();
+                while (sw.Elapsed.TotalSeconds < StartTimeoutS)
+                {
+                    int p;
+                    if (File.Exists(portFile) && int.TryParse(File.ReadAllText(portFile).Trim(), out p) && Healthy(p))
+                    {
+                        Url = "http://127.0.0.1:" + p + "/app/";
+                        OpenWindow();
+                        return 0;
+                    }
+                    Thread.Sleep(500);
+                }
+                MessageBox.Show("NanoCut Studio is still starting. Please wait a moment and open it again.", "NanoCut Studio", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return 0;
             }
-            Application.EnableVisualStyles();
-            int port = FreePort(8600);
-            File.WriteAllText(portFile, port.ToString());
-            var splash = new Form { Text = "NanoCut Studio " + BuildInfo.Version, Width = 420, Height = 150, StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false };
-            try { splash.Icon = Icon.ExtractAssociatedIcon(Assembly.GetExecutingAssembly().Location); } catch { }
+            try { File.Delete(portFile); } catch { }                         // a stale file of a crashed run
+            var splash = new Form { Text = "NanoCut Studio " + BuildInfo.Version, Width = 440, Height = 150, StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false };
+            Icon icon = null;
+            try { icon = Icon.ExtractAssociatedIcon(Assembly.GetExecutingAssembly().Location); splash.Icon = icon; } catch { }
             var lab = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Segoe UI", 10f), Text = "Starting NanoCut Studio…" };
             splash.Controls.Add(lab);
             splash.Show(); Application.DoEvents();
-            if (!StartServer(port)) return 1;
-            bool ok = WaitHealthy(port, 180, s => { lab.Text = s; Application.DoEvents(); });
+            Port = FreePort(8600);
+            if (!StartServer(Port)) return 1;
+            bool ok = WaitHealthy(Port, StartTimeoutS, x => { lab.Text = x + "\n(the first start on a new computer takes longer)"; Application.DoEvents(); });
+            splash.Close();
             if (!ok)
             {
-                splash.Close();
-                MessageBox.Show("The NanoCut backend did not start.\n\nDetails: " + Path.Combine(LogDir, "server.log"), "NanoCut", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("The NanoCut Studio engine did not start.\n\nPlease send this file to the developer:\n" + Path.Combine(LogDir, "server.log"),
+                    "NanoCut Studio", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 StopServer(); return 1;
             }
-            string url = "http://127.0.0.1:" + port + "/app/";
-            string browser = useBrowser ? null : FindBrowser();
-            splash.Close();
+            File.WriteAllText(portFile, Port.ToString());
+            Url = "http://127.0.0.1:" + Port + "/app/";
+            OpenWindow();
             try
             {
-                if (browser != null)
+                // the server lives as long as a window uses it: every open page polls /api/health; the launcher stays in
+                // the notification area (open again, logs, quit) and stops the server a few minutes after the last
+                // window was closed (never while an analysis job runs). A crashed server is restarted.
+                var menu = new ContextMenu();
+                menu.MenuItems.Add("Open NanoCut Studio", (x, e) => OpenWindow());
+                menu.MenuItems.Add("Show log files", (x, e) => Process.Start("explorer.exe", "\"" + LogDir + "\""));
+                menu.MenuItems.Add("-");
+                menu.MenuItems.Add("Quit NanoCut Studio", (x, e) => Application.ExitThread());
+                Tray = new NotifyIcon { Icon = icon ?? SystemIcons.Application, Text = "NanoCut Studio " + BuildInfo.Version, ContextMenu = menu, Visible = true };
+                Tray.DoubleClick += (x, e) => OpenWindow();
+                Tray.ShowBalloonTip(6000, "NanoCut Studio is running", "Closed the window by mistake? Double-click this icon. Right-click → Quit to stop it.", ToolTipIcon.Info);
+                StartUpdateCheck(args, null);
+                int restarts = 0;
+                var timer = new System.Windows.Forms.Timer { Interval = 10000 };
+                timer.Tick += (x, e) =>
                 {
-                    string profile = Path.Combine(DataDir, "window");
-                    var b = Process.Start(new ProcessStartInfo(browser, string.Format("--app=\"{0}\" --user-data-dir=\"{1}\" --no-first-run --no-default-browser-check --window-size=1440,900", url, profile)) { UseShellExecute = false });
-                    Log("window " + browser + " pid " + b.Id);
-                    StartUpdateCheck(args, () => { try { b.Kill(); } catch { } });
-                    b.WaitForExit();
-                    // a browser that hands the window to an existing process exits at once: keep serving while any
-                    // process of this private profile is alive
-                    while (ProfileAlive(profile)) Thread.Sleep(1500);
-                }
-                else
-                {
-                    Process.Start(url);
-                    StartUpdateCheck(args, null);
-                    var f = new Form { Text = "NanoCut Studio is running", Width = 460, Height = 170, StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false };
-                    var t = new Label { Text = "NanoCut runs at " + url + "\nClose this window to stop it.", Dock = DockStyle.Top, Height = 60, TextAlign = ContentAlignment.MiddleCenter };
-                    var open = new Button { Text = "Open in browser", Width = 140, Left = 80, Top = 70 };
-                    open.Click += (s, e) => Process.Start(url);
-                    var quit = new Button { Text = "Quit NanoCut", Width = 140, Left = 230, Top = 70 };
-                    quit.Click += (s, e) => f.Close();
-                    f.Controls.Add(t); f.Controls.Add(open); f.Controls.Add(quit);
-                    Application.Run(f);
-                }
+                    if (server.HasExited)
+                    {
+                        Log("server exited unexpectedly, code " + server.ExitCode);
+                        if (restarts++ < 3 && StartServer(Port) && WaitHealthy(Port, 120, null))
+                        {
+                            Tray.ShowBalloonTip(5000, "NanoCut Studio", "The engine was restarted. Reload the page (F5) if it shows an error.", ToolTipIcon.Warning);
+                            return;
+                        }
+                        timer.Stop();
+                        MessageBox.Show("The NanoCut Studio engine stopped.\n\nDetails: " + Path.Combine(LogDir, "server.log"), "NanoCut Studio", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        Application.ExitThread();
+                        return;
+                    }
+                    try
+                    {
+                        string j = Get("http://127.0.0.1:" + Port + "/api/desktop/idle", 5000);
+                        double idle = double.Parse(Regex.Match(j, "\"idle_s\"\\s*:\\s*([0-9.]+)").Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+                        int jobs = int.Parse(Regex.Match(j, "\"jobs_running\"\\s*:\\s*([0-9]+)").Groups[1].Value);
+                        if (idle > IdleLimitS && jobs == 0) { Log("no window for " + idle + " s: stopping"); timer.Stop(); Application.ExitThread(); }
+                    }
+                    catch (Exception ex) { Log("idle check: " + ex.Message); }
+                };
+                timer.Start();
+                Application.Run();
             }
-            finally { StopServer(); try { File.Delete(portFile); } catch { } Log("stopped"); }
+            finally
+            {
+                if (Tray != null) Tray.Visible = false;
+                StopServer(); try { File.Delete(portFile); } catch { } Log("stopped");
+            }
         }
         return 0;
     }
@@ -261,15 +323,5 @@ static class NanoCut
             catch (Exception e) { Log("update check failed: " + e.Message); }
         }) { IsBackground = true };
         t.Start();
-    }
-
-    static bool ProfileAlive(string profile)
-    {
-        // WMI is not needed: a running browser keeps a lock file in its profile folder
-        string lockFile = Path.Combine(profile, "lockfile");
-        if (!File.Exists(lockFile)) return false;
-        try { using (File.Open(lockFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { } return false; }
-        catch (IOException) { return true; }
-        catch { return false; }
     }
 }

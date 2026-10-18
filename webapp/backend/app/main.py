@@ -73,6 +73,23 @@ def _lammps_available():
     return _lmp_cache["v"]
 
 
+_LAST_SEEN = [time.time()]                    # last request from a page (the desktop launcher asks how long ago)
+
+
+@app.middleware("http")
+async def _seen(request, call_next):
+    if not request.url.path.startswith("/api/desktop/"):
+        _LAST_SEEN[0] = time.time()
+    return await call_next(request)
+
+
+@app.get("/api/desktop/idle")
+def desktop_idle():
+    """Seconds since the last request of an open page (it polls /api/health every 15 s). The Windows launcher stops the
+    server when no window has asked for anything for a few minutes, instead of guessing from browser processes."""
+    return dict(idle_s=round(time.time() - _LAST_SEEN[0], 1), jobs_running=sum(1 for j in jobs._jobs.values() if j["status"] in ("queued", "running")))
+
+
 @app.get("/api/health")
 def health():
     return dict(status="ok", api_version=__version__, nanocut_version=nanocut.__version__, python=sys.version.split()[0],
