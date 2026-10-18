@@ -14,6 +14,7 @@ export const VIEWS = [
   { id: "validation", label: "Validation", load: () => import("./views/validation.js") },
   { id: "studio", label: "Studio", load: () => import("./views/studio.js"), full: true },
   { id: "ovito", label: "OVITO", load: () => import("./views/ovito.js"), full: true },
+  { id: "graphs", label: "Graphs", load: () => import("./views/graphs.js"), full: true },
 ];
 
 let current = { view: null, cleanup: null, token: 0 };
@@ -34,7 +35,7 @@ function buildNav() {
   nav.append(el("div", { class: "nav-label" }, "Workspace"));
   VIEWS.forEach((v, i) => {
     if (i === 5) nav.append(el("div", { class: "nav-label" }, "Tools"));
-    const a = el("a", { href: `#/${v.id}`, "data-view": v.id }, svg(v.id), el("span", {}, v.label), el("span", { class: "kbd", "aria-hidden": "true" }, `Alt ${i + 1}`));
+    const a = el("a", { href: `#/${v.id}`, "data-view": v.id }, svg(v.id), el("span", {}, v.label), el("span", { class: "kbd", "aria-hidden": "true" }, `Alt ${(i + 1) % 10}`));
     a.addEventListener("click", e => { e.preventDefault(); navigate(v.id); });
     nav.append(a);
   });
@@ -116,7 +117,7 @@ function shortcuts() {
   document.addEventListener("keydown", e => {
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName);
     if (e.key === "Escape") { closeSource(); $("#help-modal").classList.remove("open"); return; }
-    if (e.altKey && /^[1-9]$/.test(e.key)) { e.preventDefault(); navigate(VIEWS[+e.key - 1].id); return; }
+    if (e.altKey && /^[0-9]$/.test(e.key) && VIEWS[(+e.key + 9) % 10]) { e.preventDefault(); navigate(VIEWS[(+e.key + 9) % 10].id); return; }
     if (typing) return;
     if (e.key === "?") { $("#help-modal").classList.add("open"); $("#help-close").focus(); }
     if (e.key === "/") { const s = document.querySelector("#view [data-search]"); if (s) { e.preventDefault(); s.focus(); } }

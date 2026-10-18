@@ -602,8 +602,133 @@ def op_pileup(req):
     return out
 
 
+# ------------------------------------------------------------------------------------------------ research analysis
+# Every per-region quantity of PLAN_PHASE3.md §2: OVITO reads the frame and computes structure types, coordination,
+# atomic strain, Voronoi volumes, Wigner–Seitz defects and dislocations; nanocut.research does the arithmetic.
+_research = {}                               # options hash -> pipeline (sharing the cached file source)
+_research_ref = {}                           # (source, cfg hash) -> nanocut.research.reference(frame 0)
+OVITO_TO_DUMP = {"Molecule Identifier": "mol", "Mass": "mass", "Charge": "q"}
+
+
+def _research_pipeline(src, cfg):
+    from ovito.pipeline import Pipeline
+    import ovito.modifiers as M
+    opts = {k: cfg.get(k) for k in ("structure", "cn_cutoff", "strain", "strain_cutoff", "volume_mode", "dxa", "dxa_lattice")}
+    key = (src["import_path"], bool(src.get("multiple_frames")), json.dumps(opts, sort_keys=True))
+    if key not in _research:
+        pl = Pipeline(source=cached_pipeline(src["import_path"], src.get("multiple_frames")).source)
+        s = cfg.get("structure") or "none"
+        if s == "diamond":
+            pl.modifiers.append(M.IdentifyDiamondModifier())
+        elif s == "cna":
+            pl.modifiers.append(M.CommonNeighborAnalysisModifier())
+        elif s == "ptm":
+            pl.modifiers.append(M.PolyhedralTemplateMatchingModifier())
+        if cfg.get("cn_cutoff"):
+            pl.modifiers.append(M.CoordinationAnalysisModifier(cutoff=float(cfg["cn_cutoff"]), number_of_bins=10))
+        if cfg.get("strain"):
+            pl.modifiers.append(M.AtomicStrainModifier(cutoff=float(cfg.get("strain_cutoff") or 3.5), reference_frame=0))
+        if cfg.get("volume_mode") == "voronoi":
+            pl.modifiers.append(M.VoronoiAnalysisModifier())
+        if cfg.get("dxa"):
+            L = M.DislocationAnalysisModifier.Lattice
+            pl.modifiers.append(M.DislocationAnalysisModifier(input_crystal_structure=getattr(L, cfg.get("dxa_lattice") or "CubicDiamond")))
+        if len(_research) >= 3:
+            _research.pop(next(iter(_research)))
+        _research[key] = pl
+    return _research[key]
+
+
+def _frame_arrays(data):
+    """OVITO data -> the frame dict of nanocut.research (dump column names for the dump's own columns)."""
+    P = data.particles
+    cols = {}
+    for name in P.keys():
+        arr = np.asarray(P[name])
+        if name in ("Position", "Particle Identifier", "Particle Type", "Structure Type", "Coordination", "Shear Strain",
+                    "Volumetric Strain", "Atomic Volume", "Color", "Selection", "Cavity Radius", "Max Face Order", "Cluster",
+                    "Per Type Coordination", "Velocity Magnitude", "Atomic Strain", "Deformation Gradient", "Rotation",
+                    "Stretch Tensor", "Strain Tensor", "Nonaffine Squared Displacement", "Dislocation Index", "Voronoi Index"):
+            continue
+        if name == "Velocity":
+            cols.update(vx=arr[:, 0], vy=arr[:, 1], vz=arr[:, 2])
+        elif name == "Force":
+            cols.update(fx=arr[:, 0], fy=arr[:, 1], fz=arr[:, 2])
+        elif arr.ndim == 1 and arr.dtype.kind in "fiu":
+            cols[OVITO_TO_DUMP.get(name, name)] = arr
+    ids = np.asarray(P.identifiers) if P.identifiers is not None else np.arange(1, P.count + 1)
+    typ = np.asarray(P.particle_types) if P.particle_types is not None else np.ones(P.count, int)
+    fr = dict(ids=ids, types=typ, pos=np.asarray(P.positions, dtype=np.float64), cell=np.asarray(data.cell), pbc=tuple(bool(b) for b in data.cell.pbc),
+              cols=cols, step=_jsonable(data.attributes.get("Timestep")),
+              type_names={t.id: t.name for t in P.particle_types.types} if P.particle_types is not None else {})
+    if "Structure Type" in P:
+        fr["structure"] = np.asarray(P["Structure Type"])
+        st = P["Structure Type"].types
+        n = max([t.id for t in st] + [0]) + 1
+        names = [str(i) for i in range(n)]
+        for t in st:
+            names[t.id] = t.name
+        fr["structure_names"] = names
+    if "Coordination" in P:
+        fr["coordination"] = np.asarray(P["Coordination"])
+    if "Shear Strain" in P:
+        fr["shear_strain"], fr["vol_strain"] = np.asarray(P["Shear Strain"]), np.asarray(P["Volumetric Strain"])
+    if "Atomic Volume" in P:
+        fr["voronoi_volume"] = np.asarray(P["Atomic Volume"])
+    if data.attributes.get("DislocationAnalysis.total_line_length") is not None:
+        fr["dxa"] = dict(length=float(data.attributes["DislocationAnalysis.total_line_length"]))
+    return fr
+
+
+def op_research(req):
+    from ovito.data import CutoffNeighborFinder
+    from nanocut import research
+    src, frame, cfg = req["spec"]["source"], int(req["frame"]), research.cfg_with_defaults(req["cfg"])
+    rkey = (src["import_path"], json.dumps([cfg["tool_types"], {str(k): v for k, v in cfg["types"].items()}, cfg["surface_cell"]], sort_keys=True))
+    if rkey not in _research_ref:
+        _research_ref[rkey] = research.reference(_frame_arrays(_raw_pipeline(src).compute(0)), cfg)
+    t0 = time.time()
+    data = _research_pipeline(src, cfg).compute(frame)
+    fr = dict(_frame_arrays(data), frame=frame)
+    if cfg.get("ws") and cfg["tool_types"]:
+        import ovito.modifiers as M
+        from ovito.pipeline import Pipeline
+        k = ("ws", src["import_path"], tuple(cfg["tool_types"]))
+        if k not in _research:
+            pl = Pipeline(source=cached_pipeline(src["import_path"], src.get("multiple_frames")).source)
+            pl.modifiers.append(M.SelectTypeModifier(types=set(cfg["tool_types"])))
+            pl.modifiers.append(M.DeleteSelectedModifier())
+            pl.modifiers.append(M.WignerSeitzAnalysisModifier(reference_frame=0))
+            _research[k] = pl
+        a = _research[k].compute(frame).attributes
+        fr["ws"] = dict(vacancies=int(a["WignerSeitz.vacancy_count"]), interstitials=int(a["WignerSeitz.interstitial_count"]))
+    finder = {}
+
+    def neighbors(idx, cutoff):
+        if cutoff not in finder:
+            finder.clear()
+            finder[cutoff] = CutoffNeighborFinder(float(cutoff), data)
+        return finder[cutoff].find_all(np.asarray(idx, dtype=np.int64), sort_by="index")
+    out = research.analyze_frame(fr, _research_ref[rkey], cfg, neighbors)
+    out["seconds"] = round(time.time() - t0, 2)
+    out["count"] = len(fr["ids"])
+    return out
+
+
+def op_volumes(req):
+    """Atomic volume per particle type estimated from frame 0: median Voronoi volume of that type (bulk dominates)."""
+    from ovito.modifiers import VoronoiAnalysisModifier
+    from ovito.pipeline import Pipeline, StaticSource
+    data = _raw_pipeline(req["spec"]["source"]).compute(0)
+    p = Pipeline(source=StaticSource(data=data.clone()))
+    p.modifiers.append(VoronoiAnalysisModifier())
+    d = p.compute()
+    v, t = np.asarray(d.particles["Atomic Volume"]), np.asarray(d.particles.particle_types)
+    return {str(int(k)): float(np.median(v[t == k])) for k in np.unique(t)}
+
+
 OPS = {"hello": lambda r: dict(ovito=ovito.version_string, pid=os.getpid()), "info": op_info, "run": op_run, "frame_table": op_frame_table,
-       "regime": op_regime, "pileup": op_pileup,
+       "regime": op_regime, "pileup": op_pileup, "research": op_research, "volumes": op_volumes,
        "export": op_export, "displacements": op_displacements, "live": op_live, "atom": op_atom}
 
 for line in sys.stdin:

@@ -5,6 +5,19 @@ geometry, depth, speed, ...) and get the two LAMMPS input decks **A** (build + e
 (restart → cut) that follow the structure of the reference decks in `C:\BTP\Cutting`, plus a geometry preview with exact
 atom counts, an in-LAMMPS validation, an optional reduced-scale real MD preview, and an OVITO-style results visualizer.
 
+## Windows app (no setup)
+
+Run `NanoCut-Setup-<version>.exe` (built with `.venv\Scripts\python desktop\build_windows.py`, see `desktop/README.md`):
+Python, OVITO and every library are inside; no internet or admin rights needed. Start NanoCut from the Start menu.
+
+## What it does (web workstation)
+
+Decks A/B from a parameter sheet; Studio and OVITO pages for dumps; **Research analysis** (every stress measure —
+von Mises, pressure, principal, Tresca, octahedral, triaxiality, components, virial averages — temperatures, forces, μ,
+specific energy, structure, RDF, bond angles, strain, defects, pile-up, roughness, per region and frame) and **Graph Studio**
+(any quantity vs any other, correlations, distributions, maps, across-run plots; full styling; PNG/JPEG/TIFF/WebP/SVG/PDF/
+EPS/PS and a ZIP of everything). Plan: `PLAN_PHASE3.md`.
+
 ## Start everything (any computer)
 
 Double-click **`START.bat`** (Windows) or run `bash start.sh` (Linux/macOS): it installs what is needed into `.venv` and
@@ -33,6 +46,8 @@ write_run_folder(PRESETS["ref_10_10 (Cutting/10-10)"], "runs/ref_10_10")   # A.i
 - `nanocut/deck.py` — deck writers A and B, run scripts, README/params provenance
 - `nanocut/runner.py` — WSL LAMMPS runner (validate with `run 0`, reduced-scale preview run)
 - `nanocut/analysis.py` — dump/log/force-file parsers, temperatures, stresses, pile-up metrics
+- `nanocut/stress.py`, `nanocut/research.py` — every stress measure; per-region research quantities, RDF, maps
+- `webapp/` — web workstation (FastAPI + JS); `desktop/` — Windows launcher and installer build
 - `ui/app.py` — Streamlit UI
 - `potentials/` — potential files shipped with LAMMPS 22 Jul 2025 (headers carry the citations)
 - `reference/` — condensed LAMMPS manual (30 Sep 2026) sections and literature survey used to write every command

@@ -184,6 +184,7 @@ export const icon = {
   decks: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.6"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M10 13h6M10 17h6"/><path d="M4 7v14h12"/></svg>',
   validation: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.6"><path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6z"/><path d="M8.5 12.5l2.4 2.4 4.8-5"/></svg>',
   studio: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.6"><rect x="3" y="4" width="18" height="13" rx="1"/><circle cx="9" cy="10" r="2"/><circle cx="14" cy="12" r="2"/><circle cx="12" cy="8" r="1.6"/><path d="M8 21h8M12 17v4"/></svg>',
+  graphs: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.6"><path d="M4 4v16h16"/><path d="M7 15l3-4 3 2 5-7"/><circle cx="18" cy="6" r="1.2"/></svg>',
   ovito: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.6"><circle cx="12" cy="12" r="8"/><circle cx="9" cy="10" r="2.2"/><circle cx="15" cy="10" r="2.2"/><circle cx="12" cy="15" r="2.2"/></svg>',
   refresh: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M20 11a8 8 0 0 0-14.3-4.6M4 5v4h4M4 13a8 8 0 0 0 14.3 4.6M20 19v-4h-4"/></svg>',
   play: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M7 5l12 7-12 7z"/></svg>',

@@ -476,6 +476,113 @@ def regime_job(body: dict = Body(...)):
     return _job(f"ovito-regime:{token}:{key}", "OVITO computes ductile/brittle indicators", run)
 
 
+def _find_params(src):
+    """params.json of a NanoCut run next to the dumps (or one or two folders up), for local sources."""
+    if src.get("remote") or src.get("blob"):
+        return None
+    d = Path(src["import_path"]).parent
+    for p in (d, d.parent, d.parent.parent):
+        f = p / "params.json"
+        if f.is_file():
+            try:
+                return f, json.loads(f.read_text(encoding="utf-8"))
+            except Exception:
+                return None
+    return None
+
+
+@router.post("/research/defaults")
+def research_defaults(body: dict = Body(...)):
+    """Suggested analysis settings: types (name, mass, atomic volume, role), tool types, time step, structure method.
+    From the run's params.json when found, else from the type names (element masses; volumes to be entered)."""
+    from nanocut import research
+    from nanocut.materials import MASS, MATERIALS
+    try:
+        spec = _spec(body)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    info_ = worker.ask({"op": "info", "frame": 0, **spec["source"]})
+    out = dict(types={}, tool_types=[], dt_ps=None, structure="none", source="type names", direction="-x")
+    found = _find_params(spec["source"])
+    if found:
+        f, prm = found
+        exp = prm.get("experiment", prm)
+        try:
+            out["types"] = {str(k): v for k, v in research.type_table_from_experiment(exp).items()}
+            out["tool_types"] = [1]
+            out["dt_ps"] = float(exp.get("thermo", {}).get("cut_dt_fs", 0.5)) * 1e-3
+            mat = MATERIALS.get(exp["workpiece"]["material"], {})
+            out["structure"] = "diamond" if mat.get("structure") in ("zincblende", "diamond") else "cna" if mat.get("structure") in ("fcc", "bcc") else "ptm"
+            out["source"] = str(f)
+            out["rake_deg"] = float(exp.get("tool", {}).get("rake_deg", 0.0))
+        except Exception as e:                                   # an older/foreign params.json: fall back to names
+            out["note"] = f"params.json not usable ({e})"
+    for t in info_["types"]:
+        k = str(t["id"])
+        if k not in out["types"]:
+            out["types"][k] = dict(name=t.get("name") or "", mass=MASS.get(t.get("name") or ""), volume=None, role="workpiece")
+        out["types"][k]["count"] = t["count"]
+    return out
+
+
+@router.post("/research/volumes")
+def research_volumes(body: dict = Body(...)):
+    try:
+        spec = _spec(body)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    def run(progress=None):
+        _prep(spec["source"], [0], progress)
+        return worker.ask({"op": "volumes", "spec": spec})
+    return _job(f"ovito-volumes:{spec['source']['import_path']}", "OVITO estimates atomic volumes (Voronoi, frame 0)", run)
+
+
+@router.post("/research")
+def research_job(body: dict = Body(...)):
+    """Research analysis of the selected frames (PLAN_PHASE3.md §2). body: {spec, frames, cfg, token}."""
+    from nanocut import research
+    try:
+        spec = _spec(body)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    try:
+        frames = sorted({int(f) for f in body.get("frames") or []})
+    except (TypeError, ValueError):
+        raise HTTPException(422, "frames must be integers")
+    if not frames or len(frames) > MAX_FRAMES:
+        raise HTTPException(422, "select between 1 and 100000 frames")
+    cfg = dict(body.get("cfg") or {})
+    for k, (lo, hi) in {"contact_radius": (1, 500), "chip_threshold": (0, 50), "subsurface_depth": (1, 500), "rdf_rmax": (2, 20),
+                        "rdf_bins": (20, 1000), "max_centers": (100, 200000), "map_bin": (0.5, 50), "profile_bin": (0.2, 50),
+                        "hist_bins": (5, 500), "bad_bins": (10, 720), "strain_cutoff": (1.5, 10), "cn_cutoff": (0.5, 6)}.items():
+        if cfg.get(k) is not None and not lo <= float(cfg[k]) <= hi:
+            raise HTTPException(422, f"{k} must be within {lo} … {hi}")
+    if cfg.get("structure") not in (None, "none", "diamond", "cna", "ptm"):
+        raise HTTPException(422, "structure must be none, diamond, cna or ptm")
+    token, src = str(body.get("token") or uuid.uuid4().hex), spec["source"]
+
+    def run(progress=None):
+        rows, t0 = [], time.time()
+        try:
+            _prep(src, [0])
+            for k, f in enumerate(frames):
+                if token in _cancel:
+                    raise RuntimeError(f"cancelled after {k} of {len(frames)} frames")
+                if progress:
+                    eta = (time.time() - t0) / k * (len(frames) - k) if k else None
+                    progress(k / len(frames), f"frame {f} ({k + 1} of {len(frames)})" + (f", about {eta:.0f} s left" if eta else ""))
+                _prep(src, [f])
+                rows.append(worker.ask({"op": "research", "spec": spec, "frame": f, "cfg": cfg}))
+        finally:
+            _cancel.discard(token)
+        rows = research.finalize(rows, cfg)
+        return dict(rows=rows, catalogue=research.catalogue(rows), cfg=cfg, source=src.get("label"), import_path=src["import_path"],
+                    seconds=round(time.time() - t0, 2), ovito=worker.info.get("ovito") if worker.info else None,
+                    params=_find_params(src)[1] if _find_params(src) else None)
+    key = hashlib.sha1(json.dumps([frames, cfg], sort_keys=True).encode()).hexdigest()[:12]
+    return _job(f"ovito-research:{token}:{key}", "OVITO research analysis", run)
+
+
 @router.post("/frames/cancel/{token}")
 def frames_cancel(token: str):
     _cancel.add(token)

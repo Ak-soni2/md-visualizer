@@ -569,6 +569,8 @@ from . import localfs, ovito_lab, remote  # noqa: E402  (OVITO worker; HPC over 
 app.include_router(ovito_lab.router)
 app.include_router(remote.router)
 app.include_router(localfs.router)
+from . import figures  # noqa: E402  (Graph Studio: matplotlib figures in every format)
+app.include_router(figures.router)
 
 
 # ---------------------------------------------------------------------------------------------------- frontend

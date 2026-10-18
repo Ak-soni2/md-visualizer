@@ -1,5 +1,18 @@
 # Changes
 
+## Research analysis, Graph Studio, Windows installer (2026-10-18, PLAN_PHASE3.md)
+
+- Created `nanocut/stress.py` (all stress measures), `nanocut/research.py` (per-region quantities, RDF/bond angles from
+  neighbour pairs, histograms, profiles, maps, roughness, damage depth), `tests/test_research.py` (known answers).
+- `backend/ovito_worker.py`: ops `research` and `volumes`; `backend/app/ovito_lab.py`: `/api/ovito/research`,
+  `/research/defaults`, `/research/volumes`; `backend/app/figures.py` (matplotlib renderer, `/api/figures/render`, `/zip`),
+  registered in `main.py`; `matplotlib` added to `backend/requirements.txt`.
+- Frontend: OVITO page "Research" tab (`js/views/ovito_research.js`), Graph Studio view (`js/views/graphs.js`, Alt+0),
+  dataset store with IndexedDB persistence (`js/research_store.js`), styles in `css/views.css`, icon in `js/ui.js`.
+- `desktop/`: launcher, installer, `build_windows.py`.
+- Self-check: research numbers vs pandas (Fc, virial von Mises, RDF peak), figures in every format, ZIP layout.
+- Verified in the browser on the sample run: analysis of 3 frames, all 88 generated figures draw, datasets survive a reload.
+
 ## Hosting on Vercel, Studio in the browser, movies, WebGL Visualizer (2026-10-11)
 
 - **Vercel hosting (frontend + API):** `tools/stage_vercel.py` assembles `build/vercel` (frontend in `public/`, FastAPI as

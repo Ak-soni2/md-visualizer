@@ -1,6 +1,6 @@
 # NanoCut BIBLE — everything about this project in one file
 
-Last update: 2026-10-10. Owner: Akshay Pratap Singh Verma (B.Tech ME, IIT Jodhpur). Project folder `C:\BTP\md-visulaizer`.
+Last update: 2026-10-18 (phase 3: research analysis, Graph Studio, Windows installer — `PLAN_PHASE3.md`). Owner: Akshay Pratap Singh Verma (B.Tech ME, IIT Jodhpur). Project folder `C:\BTP\md-visulaizer`.
 
 ## 0. The one-paragraph version
 
@@ -124,10 +124,26 @@ d_c = 0.15 (E/H)(K_c/H)² at room temperature and the experimental observation t
 | `nanocut/mock.py` | schematic animation |
 | `nanocut/runner.py` | WSL LAMMPS runner (optional) |
 | `nanocut/analysis.py` | dump/log/force parsers, metrics |
+| `nanocut/stress.py` | every stress measure from `c_s[1..6]` (σ = S/Ω): components, hydrostatic/pressure, von Mises, principal, Tresca, octahedral, J2/J3, triaxiality, Lode; region virial average |
+| `nanocut/research.py` | per-frame, per-region research quantities (temperatures, forces, μ, specific energy, stress stats, structure, strain, defects, surface), RDF/bond angles, histograms, profiles, maps |
+| `webapp/` | web workstation (FastAPI + JS): Studio, OVITO page (Research tab), Graph Studio (`#/graphs`) — `webapp/README.md` |
+| `desktop/` | Windows launcher + installer + `build_windows.py` → `dist/NanoCut-Setup-<version>.exe` — `desktop/README.md` |
 | `tools/verify_*.py`, `tools/make_report.py` | verification scripts → `VERIFICATION_REPORT.md` |
 | `examples/sample_run/` | three frames + force file + images from a real reduced-scale run |
 | `reference/` | condensed manual sections, potential catalogue, literature survey |
 | `PLAN.md`, `SETUP.md`, `README.md` | plan + reference-deck issues; setup; overview |
+
+### 5b. Research analysis and figures (phase 3, 2026-10-18)
+
+Stress: σ_ij = c_s[ij]/Ω (bar → GPa × 1e-4), tension positive; p = −tr σ/3; σ_vM = √(3J2); principal stresses by
+eigen-decomposition; τ_max = (σ1−σ3)/2; τ_oct = √(2J2/3); η = σ_h/σ_vM; Lode ξ = 27J3/(2σ_vM³). Ω nominal per type
+(3C-SiC 10.408 Å³, diamond tool 5.692 Å³ with the reference a0) or Voronoi. Per region both the statistics of the per-atom
+values and the virial average ΣS/ΣΩ are reported — they differ (thermal noise inflates the mean of per-atom von Mises:
+sample run, contact zone, frame 2: 33.7 GPa mean per atom vs 10.0 GPa virial). Regions: tool, workpiece, mol 1–6, types,
+contact zone (20 Å around the leading tool atom below the surface, at mid uncut-chip height), chip (above surface + 1 Å,
+ahead of the edge), subsurface (behind the edge, 30 Å below the tool bottom). RDF normalised with ρ = 1/Ω̄ (OVITO's own
+RDF would use the shrink-wrapped cell volume). Graph Studio (web, `#/graphs`) plots everything with matplotlib and
+exports PNG/JPEG/TIFF/WebP/SVG/PDF/EPS/PS and a ZIP with data.
 
 ## 7. Known limits
 

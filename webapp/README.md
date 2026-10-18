@@ -48,8 +48,9 @@ exists for scripts but the page no longer uses it.
 | **Validation** | Parsing vs scientific validation per simulation, archived verification (potential files, decks vs reference), last inspection time, re-run | files + `reference/*_checks.json` |
 | **Studio** | A small OVITO-style workstation for any LAMMPS dump, with PNG and MP4 export (details below) | dump folders or files on your computer (read in the browser), or paths the backend can read |
 | **OVITO** | Analysis and images made by the official OVITO Python module (details below) | any dump folder or file, read by OVITO |
+| **Graphs** | Graph Studio: any quantity vs any other, correlations, RDF/bond angles/histograms/profiles/maps, across-run plots; every style option; PNG, JPEG, TIFF, WebP, SVG, PDF, EPS, PS and a ZIP of everything (details below) | Research analyses, LAMMPS fix ave/time files and logs, CSV, saved results |
 
-Keyboard: `Alt+1…8` views, `?` help, `/` search, `Esc` close; visualizer `Space` play, `,`/`.` frames, arrows/`+`/`-`/`0` in the viewport.
+Keyboard: `Alt+1…9`, `Alt+0` views, `?` help, `/` search, `Esc` close; visualizer `Space` play, `,`/`.` frames, arrows/`+`/`-`/`0` in the viewport.
 
 ## Studio (OVITO-style viewer for publication images)
 
@@ -183,6 +184,57 @@ enclosed void (975 Å³), a 3 Å wide crack, two chip fragments and a disordered
 (measured 14.6 Å) are found; Ft/Fc and depth of cut are exact. A 4 Å probe misses a 3 Å crack: the probe must be smaller
 than the crack opening. These are indicators, not proof: confirm brittle frames visually.
 
+## Research analysis (OVITO page, "Research" tab)
+
+For the chosen frames (every n-th, range or list), OVITO reads each frame and runs Identify diamond / CNA / PTM,
+coordination, atomic strain (vs frame 0), Voronoi, Wigner–Seitz and DXA as selected; `nanocut/research.py` then computes,
+per region — all atoms, tool, workpiece, NanoCut layers (mol 1–6), each type, **contact zone** (around the leading tool
+atom below the original surface), **chip**, **subsurface** —:
+
+- **every stress measure** from `c_s[1..6]` (`nanocut/stress.py`, σ = S/Ω, GPa): σxx…τyz, hydrostatic, pressure,
+  von Mises, principal σ1 ≥ σ2 ≥ σ3, Tresca and max shear, octahedral shear, J2, J3, triaxiality, Lode parameter — mean,
+  std, min, max, 95th/99th percentile per region **and** the region's virial (volume-averaged) tensor with its invariants.
+  Ω per type nominal (prefilled from `params.json`) or per atom from Voronoi;
+- temperatures (COM-removed from velocities and masses; local from `f_keav`/`c_ke`), kinetic/potential energy, ΣF per region;
+- cutting mechanics: Fc, Ft, Fz, resultant, Ft/Fc, μ = Fc/Ft, friction angle, depth of cut, specific cutting energy,
+  cumulative work ∫Fc dx, cutting distance and tool speed (from velocities and between frames);
+- displacement/MSD vs frame 0, coordination fractions, structure fractions, disordered fraction, damage depth, shear
+  strain and plastic zone, vacancies/interstitials, dislocation density, pile-up (overall/ahead/behind), chip atoms and
+  volume, machined-surface roughness Ra/Rq/Rz;
+- curves: RDF g(r) total and partial (bulk density 1/Ω̄), bond-angle distribution, coordination histograms, histograms
+  of σvM/p/σ1/τmax/T/PE/η, depth profiles under the cutting edge and profiles along x, surface profile; 2-D x–y maps.
+
+About 1,700 quantities per frame; ~1.2 s per 98k-atom frame on this PC. Results go to Graph Studio and can be saved
+(`.nanocut-results.json`) or exported (`all_quantities.csv`). Known-answer tests: `python -m tests.test_research`
+(stress formulas on uniaxial/shear/hydrostatic and rotated tensors; a zinc-blende crystal with Maxwell velocities and
+set forces/stresses: T, Fc, μ, σvM, RDF peak 1.891 Å and CN 4, bond angle 109.5°, displacement, speed, work).
+
+## Graph Studio (#/graphs)
+
+- **Data**: research analyses (kept in the browser's IndexedDB across reloads; *Save session* writes a file), LAMMPS
+  `fix ave/time` files (e.g. `*_forces_temps.txt`), LAMMPS logs (thermo tables), CSV/TSV, saved results. Each dataset has
+  editable run parameters (speed, depth, edge radius, temperature, rake, potential) for across-run plots.
+- **Figure types**: series (any X: distance, time, step, frame or any quantity; several Y; right axis; ±std band;
+  smoothing; steady-state window with mean ± std), correlation scatter with linear/quadratic/power/exponential fit
+  (equation, R², Pearson r, Spearman ρ), correlation matrix, distributions/profiles for chosen frames, 2-D maps, stacked
+  structure/CN fractions, bars across regions, **across runs** (steady-state mean ± std vs a run parameter, e.g.
+  temperature vs cutting speed). Several datasets in one figure compare runs.
+- **Generate all graphs** builds the standard set of a nano-cutting paper from whatever data is present (~80 figures for
+  a research analysis).
+- **Style**: title, labels, font family and sizes, major/minor grid on/off with style/opacity/width, minor ticks, tick
+  direction and sides, box or open frame, axis ranges, log/inverted axes, legend (on/off, position, frame, columns),
+  palette (incl. colour-blind safe), line width, marker size, colormap, colour range, colour-bar label, size in mm (column
+  presets), DPI, background (white/transparent); *Apply style to all*.
+- **Export**: matplotlib renders preview and files from the same spec (WYSIWYG): PNG, JPEG, TIFF, WebP, SVG, PDF, EPS, PS
+  (TrueType fonts embedded as Type 42; SVG text stays text). *Download all as ZIP*: `figures/<format>/…`, `data/*.csv`,
+  `specs/*.json`, and with data: `results/<dataset>/all_scalars.csv`, `quantities.csv`, `curves/*.csv`, `analysis.json`.
+  Figure sets (styles and choices) can be saved and loaded.
+
+## Windows installer
+
+`desktop/build_windows.py` builds `dist/NanoCut-Setup-<version>.exe` (everything bundled, per-user install, no
+internet/admin) and a portable ZIP; see `desktop/README.md`.
+
 ## HPC connection (OVITO page, "HPC…", local backend only)
 
 Host/IP, port, username and password (keyboard-interactive and one-time codes supported) or a private key. The
@@ -244,6 +296,11 @@ webapp/
 | `POST /api/ovito/info`, `/render`, `/export`, `/verify` | OVITO reads a trajectory; renders with the page settings; exports data; cross-checks with NanoCut's parser (jobs) |
 | `POST /api/ovito/script` | the OVITO Python script for the current settings |
 | `/api/ovito/file/{name}` | rendered PNG or exported file |
+| `POST /api/ovito/research/defaults` | types (name, mass, atomic volume, role), time step, structure method from `params.json` |
+| `POST /api/ovito/research/volumes` | atomic volume per type: median Voronoi volume in frame 0 (job) |
+| `POST /api/ovito/research` | `{spec, frames, cfg}` → per-frame scalars per region, curves, maps (job) |
+| `POST /api/figures/render` | `{spec, format, dpi?}` → figure file (png jpg tiff webp svg pdf eps ps) |
+| `POST /api/figures/zip` | `{figures, formats, files}` → ZIP of all figures, data, specs, results |
 | `/api/studio/scan?path=` | dump sequences in a folder (two levels deep) or the given dump file; names and sizes only |
 | `POST /api/studio/open` | `{path, pattern?, refresh?}` → frame index of a sequence or file (job) |
 | `POST /api/studio/sources/{id}/frames/{i}/load?ref=` | parse a frame (and the displacement reference) into the cache (job) |

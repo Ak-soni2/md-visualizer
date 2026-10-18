@@ -275,21 +275,42 @@ no administrator rights.
 | # | Item | Files | Status |
 |---|---|---|---|
 | 6.1 | This plan | `PLAN_PHASE3.md` | [x] |
-| 6.2 | Stress module + unit tests (known tensors) | `nanocut/stress.py`, `tests/test_stress.py` | [ ] |
-| 6.3 | Research analysis core (regions, temperatures, forces, energy, displacement, structure stats, RDF/BAD from neighbour pairs, profiles, maps, histograms, roughness) | `nanocut/research.py`, `tests/test_research.py` | [ ] |
-| 6.4 | OVITO worker op `research` (structure/strain/Voronoi/WS modifiers, neighbour finder) | `webapp/backend/ovito_worker.py` | [ ] |
-| 6.5 | API `/api/ovito/research` (job over frames, cancel, defaults from `params.json`) | `webapp/backend/app/ovito_lab.py` | [ ] |
-| 6.6 | Figure renderer (matplotlib) + API `/api/figures/render`, `/api/figures/zip` | `webapp/backend/app/figures.py`, `main.py` | [ ] |
-| 6.7 | OVITO page "Research" tab (settings, run, results table) | `webapp/frontend/js/views/ovito_research.js`, `ovito.js` | [ ] |
-| 6.8 | Graph Studio (data sources, figure list, editor, gallery, exports, ZIP, datasets, across-run) | `webapp/frontend/js/graphstudio.js`, CSS | [ ] |
-| 6.9 | Self-check additions (stress, research op, figures in every format, ZIP) | `webapp/backend/selfcheck.py` | [ ] |
-| 6.10 | Browser verification on the sample run (every figure type, every format, styles, ZIP) | — | [ ] |
-| 6.11 | Desktop launcher, installer, build script, icon | `desktop/` | [ ] |
-| 6.12 | Build and test the installer (silent install, start, API, uninstall) | `dist/` | [ ] |
-| 6.13 | Docs: BIBLE, README, webapp README/CHANGES, requirements (matplotlib) | docs | [ ] |
-| 6.14 | Commit and push | git | [ ] |
+| 6.2 | Stress module + unit tests (known tensors) | `nanocut/stress.py`, `tests/test_research.py` | [x] |
+| 6.3 | Research analysis core (regions, temperatures, forces, energy, displacement, structure stats, RDF/BAD from neighbour pairs, profiles, maps, histograms, roughness) | `nanocut/research.py`, `tests/test_research.py` | [x] |
+| 6.4 | OVITO worker op `research` (structure/strain/Voronoi/WS modifiers, neighbour finder) | `webapp/backend/ovito_worker.py` | [x] |
+| 6.5 | API `/api/ovito/research` (job over frames, cancel, defaults from `params.json`) | `webapp/backend/app/ovito_lab.py` | [x] |
+| 6.6 | Figure renderer (matplotlib) + API `/api/figures/render`, `/api/figures/zip` | `webapp/backend/app/figures.py`, `main.py` | [x] |
+| 6.7 | OVITO page "Research" tab (settings, run, results table) | `webapp/frontend/js/views/ovito_research.js`, `ovito.js` | [x] |
+| 6.8 | Graph Studio (data sources, figure list, editor, gallery, exports, ZIP, datasets, across-run) | `webapp/frontend/js/views/graphs.js`, `js/research_store.js`, CSS | [x] |
+| 6.9 | Self-check additions (stress, research op, figures in every format, ZIP) | `webapp/backend/selfcheck.py` | [x] |
+| 6.10 | Browser verification on the sample run (every figure type, every format, styles, ZIP) | — | [x] |
+| 6.11 | Desktop launcher, installer, build script, icon | `desktop/` | [x] |
+| 6.12 | Build and test the installer (silent install, start, API, uninstall) | `dist/` | [x] |
+| 6.13 | Docs: BIBLE, README, webapp README/CHANGES, requirements (matplotlib) | docs | [x] |
+| 6.14 | Commit and push | git | [x] |
 
 ---
+
+## 6b. Status (2026-10-18, end of the phase-3 session)
+
+Done and verified:
+- `python -m tests.test_research`: 3/3 known-answer tests (stress formulas on uniaxial/shear/hydrostatic/rotated tensors;
+  synthetic zinc-blende frame: T_COM ≈ 300 K from Maxwell velocities, Fc/Ft/μ/friction angle exact, σvM and virial σvM
+  1 GPa, pressure −1/3 GPa, RDF peak 1.89 Å with CN ≈ 4, bond angle 109.5°, displacement 0.5 Å, speed, cutting work).
+- `webapp/backend/selfcheck.py`: all checks pass, incl. research numbers against an independent pandas calculation on the
+  sample run (Fc = 20.382 nN, workpiece virial σvM = 10.029 GPa, RDF peak 1.90 Å / CN 3.92), figures in all 8 formats, ZIP layout.
+- Browser (sample run, 1440 × 900): Research tab prefilled from `params.json`, 3 frames in 7.3 s, 1,721 quantities per
+  frame; Graph Studio generated 88 figures (81 research + 7 from the force/temperature file), all draw; datasets survive a reload.
+- Installer `dist/NanoCut-Setup-<version>.exe` (263 MB, 43 packages, 10,368 files): silent install 33 s → 636 MB;
+  bundled Python isolated (own sys.path, OVITO 3.16 from the install); `NanoCut.exe --check` OK (API, OVITO worker, app);
+  research + PDF export on the installed copy give the same numbers as the dev environment; silent uninstall removes
+  the folder and the registry entry.
+
+Not verified here: the installer on a second, clean PC (the bundle does not use anything outside its folder, as checked
+above, but a clean machine was not available); the app window (Edge app mode) was not opened during the automated tests.
+Field notes: `σ1 max` per atom is dominated by single surface atoms (166 GPa on the sample run) — use percentiles or the
+virial average in papers; the per-atom mean von Mises is inflated by thermal noise (33.7 vs 10.0 GPa virial in the contact
+zone of frame 2).
 
 ## 7. Backlog (the rest of the project, after this phase)
 

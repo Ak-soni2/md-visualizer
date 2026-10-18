@@ -15,6 +15,7 @@ import { buildFramesPanel, exportDefaults } from "./ovito_frames.js";
 import { openHpc } from "./ovito_hpc.js";
 import { buildDbtPanel, dbtDefaults } from "./ovito_dbt.js";
 import { buildMeasurePanel, drawMeasures } from "./ovito_measure.js";
+import { buildResearchPanel } from "./ovito_research.js";
 
 const KEY = "nanocut.ovito.v2";
 const MODS = [
@@ -613,11 +614,12 @@ export async function render(root) {
   function stop() { playing = false; playBtn.replaceChildren(svg("play")); playBtn.setAttribute("aria-label", "Play"); }
 
   // ---------------------------------------------------------------------------------------------- side panels
-  const T = tabs([{ id: "pipeline", label: "Pipeline" }, { id: "render", label: "Render" }, { id: "frames", label: "Export" }, { id: "dbt", label: "Ductile–brittle" }, { id: "measure", label: "Measure" }, { id: "results", label: "Results" }, { id: "more", label: "More" }],
+  const T = tabs([{ id: "pipeline", label: "Pipeline" }, { id: "render", label: "Render" }, { id: "frames", label: "Export" }, { id: "dbt", label: "Ductile–brittle" }, { id: "measure", label: "Measure" }, { id: "research", label: "Research" }, { id: "results", label: "Results" }, { id: "more", label: "More" }],
     id => { S.sideTab = id; save(); refreshSide(id); });                  // the open tab is remembered
   side.append(T.bar, ...Object.values(T.panels));
   const builders = { pipeline: buildPipeline, render: buildRender, results: buildResults, more: buildMore,
     frames: p => buildFramesPanel(p, { S, save, info: () => info, spec: () => spec(fi), frameMeta: () => frame?.meta }),
+    research: p => buildResearchPanel(p, { S, save, info: () => info, spec: () => spec(fi) }),
     measure: p => buildMeasurePanel(p, { S, save, info: () => info, spec: () => spec(fi), frameIndex: () => fi, srcKey, startMeasure, redraw: requestDraw }),
     dbt: p => buildDbtPanel(p, { S, save, info: () => info, spec: () => spec(fi), setRegime: m => { regimeMap = m; setHud(); },
       showDamage: types => {                                            // tool removed, structure types coloured: damage visible while playing

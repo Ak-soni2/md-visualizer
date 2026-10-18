@@ -246,6 +246,27 @@ if ost.get("available"):
     w2 = dump[dump["type"] != 1]
     check("pile-up height equals pandas", abs(pu["surface_y"] - ysurf) < 1e-9 and abs(pu["highest"]["height"] - (w2.y.max() - ysurf)) < 1e-9,
           f"H = {pu['highest']['height']:.4f} Å")
+    # research analysis (PLAN_PHASE3.md §2): numbers compared with an independent pandas calculation on frame 2
+    dfl = c.post("/api/ovito/research/defaults", json={"spec": dict(lspec, frame=0, modifiers=[])}).json()
+    check("research defaults from params.json", dfl["types"]["1"]["role"] == "tool" and abs(dfl["types"]["2"]["volume"] - 4.3667 ** 3 / 8) < 1e-3, dfl.get("source", ""))
+    rs = job_result(wait("/api/ovito/research", "post", json={"spec": dict(lspec, frame=0, modifiers=[]), "frames": [0, 2],
+                                                              "cfg": dict(types=dfl["types"], tool_types=[1], dt_ps=0.0005, structure="diamond", maps=False)}))
+    S2 = rs["rows"][1]["scalars"]
+    tool2 = dump[dump["type"] == 1]
+    check("research: Fc = |sum Fx| over the tool (nN)", abs(S2["Fc"] - abs(tool2.fx.sum()) * 1.602176634) < 1e-6 * max(1, S2["Fc"]), f"{S2['Fc']:.4f} nN")
+    w2v = dump[dump["type"] != 1]
+    Sxx, Syy, Szz, Sxy, Sxz, Syz = (w2v[f"c_s[{i}]"].sum() / (len(w2v) * dfl["types"]["2"]["volume"]) * 1e-4 for i in range(1, 7))
+    vm = np.sqrt(0.5 * ((Sxx - Syy) ** 2 + (Syy - Szz) ** 2 + (Szz - Sxx) ** 2) + 3 * (Sxy ** 2 + Sxz ** 2 + Syz ** 2))
+    check("research: workpiece virial von Mises equals pandas", abs(S2["vir.von_mises_GPa@workpiece"] - vm) < 1e-6 * max(1, vm), f"{vm:.4f} GPa")
+    check("research: RDF first peak at the Si-C bond", abs(S2["rdf_peak_r@workpiece"] - 1.89) < 0.06 and abs(S2["rdf_cn@workpiece"] - 4) < 0.3,
+          f"{S2['rdf_peak_r@workpiece']} Å, CN {S2['rdf_cn@workpiece']:.3f}")
+    # Graph Studio renderer: every format, ZIP
+    fspec = {"name": "check", "kind": "line", "series": [{"name": "Fc", "x": [0, 1, 2], "y": [1, 2, 4]}], "fit": {"type": "linear"}}
+    heads = {"png": b"\x89PNG", "jpg": b"\xff\xd8", "tiff": b"II*\x00", "webp": b"RIFF", "svg": b"<?xml", "pdf": b"%PDF", "eps": b"%!PS", "ps": b"%!PS"}
+    okf = [f for f, h in heads.items() if c.post("/api/figures/render", json={"spec": fspec, "format": f}).content[:len(h)] == h]
+    check("figures render in every format", len(okf) == len(heads), ", ".join(okf))
+    zz = _zf.ZipFile(_io.BytesIO(c.post("/api/figures/zip", json={"figures": [fspec], "formats": ["png", "pdf"], "files": {"results/x.csv": "a\n1\n"}}).content))
+    check("figures ZIP has figures, data, specs, results", {"figures/png/check.png", "figures/pdf/check.pdf", "data/check.csv", "specs/check.json", "results/x.csv"} <= set(zz.namelist()))
     check("OVITO live colours: 43,363 selected (tool) drawn in OVITO's selection colour", int((col == [255, 0, 0]).all(1).sum()) == 43363,
           f"{int((col == [255, 0, 0]).all(1).sum())} red")
 

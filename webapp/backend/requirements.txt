@@ -5,3 +5,4 @@ httpx>=0.27        # only for the self-check (FastAPI TestClient)
 ovito==3.16.0        # OVITO page (official OVITO Python module; adds PySide6-Essentials, traits)
 openpyxl>=3.1      # Excel export of frame statistics
 paramiko>=3.4      # SSH/SFTP connection to an HPC cluster
+matplotlib>=3.8     # Graph Studio figures (PNG, JPEG, TIFF, WebP, SVG, PDF, EPS, PS)
