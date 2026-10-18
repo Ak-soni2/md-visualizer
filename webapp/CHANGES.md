@@ -1,5 +1,21 @@
 # Changes
 
+## Background tasks, automatic analysis, Graph Studio import, chart downloads (2026-10-18)
+
+- Long OVITO jobs (Research, Ductile–brittle, pile-up, frame export/statistics) are background tasks (`js/tasks.js`):
+  they keep running when you switch tabs; the tab shows their progress or result when you come back; ⏳ in the top bar
+  lists them. They run on a second OVITO worker (`bg` in `backend/app/ovito_lab.py`), so the viewport stays responsive.
+- Opening a dump folder/file in the OVITO tab starts the research analysis automatically (up to 60 evenly spaced frames,
+  run defaults from `params.json`; switch in Research → Automatic) and adds the LAMMPS force/temperature/log files found
+  next to the dumps (`/api/ovito/research/sidefiles`) to Graph Studio (`js/autoresearch.js`).
+- Graph Studio → Load files… now reads LAMMPS dumps, per-atom CSVs, the frame-CSV ZIP of the Export tab, Excel workbooks,
+  LAMMPS logs, fix ave/time files and any table (`backend/app/graph_import.py`, `/api/graphs/import`): per-frame statistics
+  (mean/std/min/max, force sums per type in nN) and per-atom tables (scatter vs position). Graph Studio → Analyse dumps…
+  runs the full analysis on a chosen folder. Auto-figures for these tables.
+- Every chart of the OVITO tab: ⤓ Download → PNG without/with gridlines, all formats without gridlines (PNG, SVG, PDF,
+  TIFF, EPS, JPEG as ZIP), CSV, Open in Graph Studio (`js/plot.js`).
+- Help guide: "How to use Graphs". Figures: series with fewer than 3 points get markers.
+
 ## NanoCut Studio: help guide, CI/CD installer, updates (2026-10-18)
 
 - Sidebar "Help — what each tab does" (`js/guide.js`, mounted in `js/app.js`, styles in `css/base.css`); brand name

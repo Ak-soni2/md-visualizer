@@ -1,6 +1,10 @@
 // Lightweight canvas line plot for scientific series: labelled axes with units, nice ticks, legend,
 // optional shaded band (e.g. the steady-state window used for averages), hover readout, PNG/CSV export.
 import { SERIES_COLORS } from "./colormaps.js";
+import { apiUrl } from "./api.js";
+import * as store from "./research_store.js";
+
+const EXPORT_FORMATS = ["png", "svg", "pdf", "tiff", "eps", "jpg"];
 
 function niceStep(range, count) {
   const raw = range / Math.max(1, count), mag = 10 ** Math.floor(Math.log10(raw)), f = raw / mag;
@@ -21,6 +25,7 @@ export class LinePlot {
     this.canvas.setAttribute("role", "img");
     this.tip = document.createElement("div"); this.tip.className = "plot-tip";
     container.append(this.canvas, this.tip);
+    this.tools();
     this.series = []; this.band = null;
     const cs = getComputedStyle(document.documentElement);
     this.col = { grid: cs.getPropertyValue("--line").trim(), axis: cs.getPropertyValue("--line-3").trim(), text: cs.getPropertyValue("--text-2").trim(), text0: cs.getPropertyValue("--text-1").trim(), band: "rgba(226,162,58,0.07)", bandLine: "rgba(226,162,58,0.35)" };
@@ -50,6 +55,14 @@ export class LinePlot {
     if (!W || !H) return;
     this.canvas.width = W * dpr; this.canvas.height = H * dpr;
     const g = this.canvas.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+    this.paint(g, W, H, { grid: true, col: this.col, live: true });
+  }
+  /** Draw the plot into a 2-D context (screen, or an off-screen image: grid off, white paper colours). */
+  paint(g, W, H, { grid = true, col = this.col, live = false } = {}) {
+    const keep = this.col; this.col = col;
+    try { this._paint(g, W, H, grid, live); } finally { this.col = keep; }
+  }
+  _paint(g, W, H, grid, live) {
     const e = this.extents();
     g.font = "11px " + getComputedStyle(document.body).fontFamily;
     if (!e) { g.fillStyle = this.col.text; g.textAlign = "center"; g.fillText("no data", W / 2, H / 2); return; }
@@ -60,10 +73,10 @@ export class LinePlot {
       if (lx0 + w > W - 14 && lx0 > 66) { row++; lx0 = 66; }
       items.push({ s, x: lx0, y: 12 + row * 16 }); lx0 += w;
     }
-    this._legend = items;
+    if (live) this._legend = items;
     const m = { l: 62, r: 14, t: 26 + row * 16, b: 40 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
     const X = v => m.l + (v - e.x0) / (e.x1 - e.x0 || 1) * pw, Y = v => m.t + ph - (v - e.y0) / (e.y1 - e.y0 || 1) * ph;
-    this.map = { X, Y, m, pw, ph, e };
+    if (live) this.map = { X, Y, m, pw, ph, e };
     const tx = ticks(e.x0, e.x1, Math.max(3, pw / 90)), ty = ticks(e.y0, e.y1, Math.max(3, ph / 50));
     // band
     if (this.band) {
@@ -75,9 +88,9 @@ export class LinePlot {
     // grid + ticks
     g.strokeStyle = this.col.grid; g.lineWidth = 1; g.fillStyle = this.col.text;
     g.textAlign = "center"; g.textBaseline = "top";
-    for (const v of tx.out) { const x = Math.round(X(v)) + 0.5; g.beginPath(); g.moveTo(x, m.t); g.lineTo(x, m.t + ph); g.stroke(); g.fillText(fmt(v, tx.st), x, m.t + ph + 6); }
+    for (const v of tx.out) { const x = Math.round(X(v)) + 0.5; if (grid) { g.beginPath(); g.moveTo(x, m.t); g.lineTo(x, m.t + ph); g.stroke(); } else { g.strokeStyle = this.col.axis; g.beginPath(); g.moveTo(x, m.t + ph); g.lineTo(x, m.t + ph - 4); g.stroke(); g.strokeStyle = this.col.grid; } g.fillText(fmt(v, tx.st), x, m.t + ph + 6); }
     g.textAlign = "right"; g.textBaseline = "middle";
-    for (const v of ty.out) { const y = Math.round(Y(v)) + 0.5; g.beginPath(); g.moveTo(m.l, y); g.lineTo(m.l + pw, y); g.stroke(); g.fillText(fmt(v, ty.st), m.l - 6, y); }
+    for (const v of ty.out) { const y = Math.round(Y(v)) + 0.5; if (grid) { g.beginPath(); g.moveTo(m.l, y); g.lineTo(m.l + pw, y); g.stroke(); } else { g.strokeStyle = this.col.axis; g.beginPath(); g.moveTo(m.l, y); g.lineTo(m.l + 4, y); g.stroke(); g.strokeStyle = this.col.grid; } g.fillText(fmt(v, ty.st), m.l - 6, y); }
     if (e.y0 < 0 && e.y1 > 0) { g.strokeStyle = this.col.axis; g.beginPath(); g.moveTo(m.l, Math.round(Y(0)) + 0.5); g.lineTo(m.l + pw, Math.round(Y(0)) + 0.5); g.stroke(); }
     g.strokeStyle = this.col.axis; g.strokeRect(m.l + 0.5, m.t + 0.5, pw, ph);
     // axis labels
@@ -100,12 +113,12 @@ export class LinePlot {
     g.setLineDash([]); g.restore();
     // legend
     g.textBaseline = "middle"; g.textAlign = "left";
-    for (const { s, x: lx, y: ly } of this._legend) {
+    for (const { s, x: lx, y: ly } of items) {
       g.strokeStyle = s.color; g.lineWidth = 2; g.setLineDash(s.dash || []); g.beginPath(); g.moveTo(lx, ly); g.lineTo(lx + 14, ly); g.stroke(); g.setLineDash([]);
       g.fillStyle = this.col.text0; g.fillText(s.name, lx + 18, ly);
     }
     // hover crosshair
-    if (this.hoverX !== null && this.hoverX !== undefined) {
+    if (live && this.hoverX !== null && this.hoverX !== undefined) {
       const x = X(this.hoverX); g.strokeStyle = this.col.axis; g.setLineDash([2, 3]); g.beginPath(); g.moveTo(x, m.t); g.lineTo(x, m.t + ph); g.stroke(); g.setLineDash([]);
     }
   }
@@ -129,8 +142,55 @@ export class LinePlot {
     this.tip.style.left = `${px + 14 + tw > r.width ? px - tw - 10 : px + 14}px`;
     this.tip.style.top = `${Math.max(4, ev.clientY - r.top - 20)}px`;
   }
-  toPNG(name) {
-    const a = document.createElement("a"); a.download = name; a.href = this.canvas.toDataURL("image/png"); a.click();
+  toPNG(name, { grid = true, scale = 3 } = {}) {
+    const W = this.c.clientWidth || 640, H = this.c.clientHeight || 360, cv = document.createElement("canvas");
+    cv.width = W * scale; cv.height = H * scale;
+    const g = cv.getContext("2d"); g.setTransform(scale, 0, 0, scale, 0, 0);
+    g.fillStyle = "#ffffff"; g.fillRect(0, 0, W, H);
+    g.font = "11px " + getComputedStyle(document.body).fontFamily;
+    this.paint(g, W, H, { grid, col: { grid: "#dddddd", axis: "#333333", text: "#333333", text0: "#000000", band: "rgba(226,162,58,0.12)", bandLine: "rgba(170,110,20,0.6)" } });
+    const a = document.createElement("a"); a.download = name; a.href = cv.toDataURL("image/png"); a.click();
+  }
+  /** The plot as a Graph Studio figure spec (matplotlib on the server draws every format from it). */
+  spec(grid = false) {
+    const t = this.opts.title || "plot";
+    return { name: t.replace(/[^\w.\-]+/g, "_").replace(/^_+|_+$/g, "") || "plot", kind: "line", legend_single: this.series.length > 1,
+      series: this.series.map(s => ({ name: s.name, x: [...s.x].map(v => (Number.isFinite(v) ? v : null)), y: [...s.y].map(v => (Number.isFinite(v) ? v : null)),
+        show_markers: !!s.points, linestyle: s.dash?.length ? "--" : "-" })),
+      band: this.band || null, band_label: this.bandLabel || "",
+      style: { title: this.opts.title || "", xlabel: this.opts.xLabel || "", ylabel: this.opts.yLabel || "", grid_major: grid, grid_minor: false, width_mm: 140, height_mm: 90, dpi: 300 } };
+  }
+  async exportAll() {
+    const sp = this.spec(false);
+    const res = await fetch(apiUrl("/api/figures/zip"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ figures: [sp], formats: EXPORT_FORMATS }) });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+    const a = document.createElement("a"); a.download = `${sp.name}_all_formats.zip`; a.href = URL.createObjectURL(await res.blob()); a.click();
+  }
+  openInGraphStudio() {
+    const sp = this.spec(false), cols = {};
+    this.series.forEach(s => { cols[`${s.name} | ${this.opts.xLabel || "x"}`] = [...s.x]; cols[s.name] = [...s.y]; });
+    const [d] = store.addImported([{ label: `OVITO chart: ${this.opts.title || "plot"}`, format: "chart from the OVITO page", kind: "table", columns: cols }]);
+    store.requestFigure({ name: sp.name, kind: "series", ds: [d.id], x: Object.keys(cols)[0], ys: this.series.map(s => ({ key: s.name })), style: { title: this.opts.title || "", xlabel: this.opts.xLabel || "", ylabel: this.opts.yLabel || "", grid_major: false } });
+    location.hash = "#/graphs";
+  }
+  tools() {
+    const menu = document.createElement("div"); menu.className = "plot-menu"; menu.hidden = true;
+    const bar = document.createElement("div"); bar.className = "plot-tools";
+    const btn = document.createElement("button"); btn.className = "btn ghost"; btn.type = "button"; btn.textContent = "⤓ Download"; btn.setAttribute("aria-haspopup", "true");
+    btn.title = "Download this chart (with or without gridlines) or open it in Graph Studio";
+    const name = () => (this.opts.title || "plot").replace(/[^\w.\-]+/g, "_");
+    const items = [["PNG without gridlines (white, 3×)", () => this.toPNG(`${name()}_nogrid.png`, { grid: false })],
+      ["PNG with gridlines (white, 3×)", () => this.toPNG(`${name()}.png`, { grid: true })],
+      ["All formats without gridlines (PNG, SVG, PDF, TIFF, EPS, JPEG) — ZIP", () => this.exportAll().catch(e => alert(`Export failed: ${e.message}`))],
+      ["Data (CSV)", () => this.toCSV(`${name()}.csv`)],
+      ["Open in Graph Studio (style, every format)", () => this.openInGraphStudio()]];
+    for (const [label, fn] of items) {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = label;
+      b.onclick = () => { menu.hidden = true; fn(); }; menu.append(b);
+    }
+    btn.onclick = e => { e.stopPropagation(); menu.hidden = !menu.hidden; };
+    document.addEventListener("click", e => { if (!menu.contains(e.target)) menu.hidden = true; });
+    bar.append(btn); this.c.append(bar, menu);
   }
   toCSV(name) {
     const head = ["series", this.opts.xLabel, this.opts.yLabel].map(h => `"${h}"`).join(",");

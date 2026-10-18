@@ -588,6 +588,8 @@ app.include_router(remote.router)
 app.include_router(localfs.router)
 from . import figures  # noqa: E402  (Graph Studio: matplotlib figures in every format)
 app.include_router(figures.router)
+from . import graph_import  # noqa: E402  (Graph Studio: dumps, CSV, ZIP, Excel, logs -> tables)
+app.include_router(graph_import.router)
 
 
 # ---------------------------------------------------------------------------------------------------- frontend

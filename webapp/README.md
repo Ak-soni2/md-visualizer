@@ -211,6 +211,11 @@ set forces/stresses: T, Fc, μ, σvM, RDF peak 1.891 Å and CN 4, bond angle 109
 
 ## Graph Studio (#/graphs)
 
+**Quick start:** open a dump folder in the OVITO tab — it is analysed automatically in the background (⏳ in the top bar)
+— then Graphs → *Generate all graphs* → style → *Download all as ZIP*. Other ways in: Graphs → *Analyse dumps…* (choose a
+folder) or *Load files…* (dumps, per-atom CSVs, the frame-CSV ZIP, Excel, logs, force files, CSV). Long jobs keep running
+when you switch tabs. Every chart in the OVITO tab has ⤓ Download (no-gridline PNG, all formats, CSV, Open in Graph Studio).
+
 - **Data**: research analyses (kept in the browser's IndexedDB across reloads; *Save session* writes a file), LAMMPS
   `fix ave/time` files (e.g. `*_forces_temps.txt`), LAMMPS logs (thermo tables), CSV/TSV, saved results. Each dataset has
   editable run parameters (speed, depth, edge radius, temperature, rake, potential) for across-run plots.

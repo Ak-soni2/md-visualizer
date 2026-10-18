@@ -16,6 +16,7 @@ import { openHpc } from "./ovito_hpc.js";
 import { buildDbtPanel, dbtDefaults } from "./ovito_dbt.js";
 import { buildMeasurePanel, drawMeasures } from "./ovito_measure.js";
 import { buildResearchPanel } from "./ovito_research.js";
+import { autoResearch } from "../autoresearch.js";
 
 const KEY = "nanocut.ovito.v2";
 const MODS = [
@@ -308,6 +309,8 @@ export async function render(root) {
     cache.clear(); frame = null;
     buildTimeline(); buildSide();
     await loadFrame(S.frame, true);
+    // research analysis of this trajectory in the background (own OVITO worker): Graph Studio shows it when done
+    if (S.autoResearch !== false) autoResearch(source, last.label || last.pattern || "trajectory", info).then(() => refreshSide("research")).catch(() => {});
   }
 
   // ---------------------------------------------------------------------------------------------- frames

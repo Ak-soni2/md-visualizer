@@ -185,7 +185,7 @@ def draw(spec):
                     stack_base = base + np.nan_to_num(y)
                 else:
                     show_line = se.get("show_line", t != "scatter")
-                    show_mk = se.get("show_markers", t == "scatter")
+                    show_mk = se.get("show_markers") or t == "scatter" or int(np.isfinite(y).sum()) < 3
                     mk = se.get("marker") or ("o" if show_mk else None)
                     h, = a.plot(x, y, color=col, lw=lw if show_line else 0, ls=se.get("linestyle") or "-", marker=mk if show_mk else None,
                                 ms=ms, label=lab, mfc=se.get("mfc") or col, mec=col)

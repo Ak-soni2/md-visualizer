@@ -8,6 +8,7 @@
 import * as api from "../api.js";
 import { el, clear, num, toast, loading, errorState, download } from "../ui.js";
 import { LinePlot } from "../plot.js";
+import * as tasks from "../tasks.js";
 import { selectFrames } from "./ovito_frames.js";
 
 const AXES = [["y", "Height Δy"], ["xyz", "Distance"], ["x", "Δx"], ["z", "Δz"]];
@@ -51,13 +52,21 @@ export function buildMeasurePanel(p, ctx) {
   const res = el("div", {}), list = el("div", { class: "grid1" });
 
   // ---- automatic pile-up
-  async function pile(frames) {
-    clear(res).append(loading(`OVITO measures ${frames.length} frame${frames.length > 1 ? "s" : ""}…`, true));
-    try {
-      const r = await api.job("/api/ovito/pileup", { method: "POST", pollMs: 300, timeoutMs: 24 * 3600e3, onProgress: x => res.firstChild?.update?.(x),
-        data: { spec: ctx.spec(), frames, params: { tool_types: tools, threshold: Mset.threshold, direction: S.dbt?.direction || "-x" } } });
-      showPile(r.rows);
-    } catch (e) { clear(res).append(errorState(e)); }
+  // background task: keeps running when you switch tabs; the result is shown when you come back
+  const PKEY = `pileup:${ctx.srcKey()}`;
+  function attachPile() {
+    const t = tasks.get(PKEY);
+    if (!t) return;
+    if (t.status === "running") { clear(res).append(tasks.progressBox(t)); t.promise.finally(() => { if (res.isConnected) attachPile(); }); }
+    else if (t.status === "error") clear(res).append(errorState(t.error));
+    else showPile(t.result.rows);
+  }
+  function pile(frames) {
+    const spec0 = ctx.spec(), prm = { tool_types: tools, threshold: Mset.threshold, direction: S.dbt?.direction || "-x" };
+    if (tasks.get(PKEY)?.status !== "running") tasks.forget(PKEY);
+    tasks.start(PKEY, `Pile-up height · ${frames.length} frame${frames.length > 1 ? "s" : ""}`, async update =>
+      api.job("/api/ovito/pileup", { method: "POST", pollMs: 300, timeoutMs: 72 * 3600e3, onProgress: x => update(x), data: { spec: spec0, frames, params: prm } }), { href: "#/ovito" });
+    attachPile();
   }
   function showPile(rows) {
     clear(res);
@@ -116,4 +125,5 @@ export function buildMeasurePanel(p, ctx) {
       el("p", { class: "muted small" }, "Click the first particle, then the second (Esc cancels). Positions are OVITO's exact values, not the display."),
       list));
   buildList();
+  attachPile();
 }

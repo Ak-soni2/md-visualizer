@@ -66,6 +66,10 @@ export function finalizeRows(rows, dt) {
   return rows;
 }
 
+export function removeSource(path) {
+  for (let i = datasets.length - 1; i >= 0; i--) if (datasets[i].kind === "research" && datasets[i].import_path === path) datasets.splice(i, 1);
+}
+
 function makeResearch(res, label) {
   const rows = res.rows;
   const cat = res.catalogue || {};
@@ -127,6 +131,31 @@ export function parseTable(text, name) {
   return { columns: Object.fromEntries(head.map((h, i) => [h, rows.map(r => r[i])])), format: fmt };
 }
 
+/** A table dataset from columns ({name: values}); kind "frames" (one row per frame), "atoms" (one row per atom), "table". */
+export function makeTable({ label, format = "table", columns, params = {}, kind = "table", note = "", dataset_id = null, source = null }) {
+  const keys = Object.keys(columns).map(k => ({ key: k, label: k, unit: /_nN$|\[nN\]/.test(k) ? "nN" : /_K$/.test(k) ? "K" : "", category: kind === "atoms" ? "per atom" : "file", region: null, quantity: k }));
+  const n = keys.length ? columns[keys[0].key].length : 0;
+  return { id: dataset_id || newId(), kind: "table", subkind: kind, label, format, columns, keys, params, n, note, source,
+    series(key) { return (columns[key] || []).map(v => (v == null ? NaN : v)); }, frames() { return [...Array(n).keys()]; },
+    curveNames: () => [], mapNames: () => [] };
+}
+export function addImported(list, extra = {}) {
+  const out = [];
+  for (const ds of list) {
+    if (!ds.columns || !Object.keys(ds.columns).length) continue;
+    if (extra.source) { const old = datasets.findIndex(d => d.source === extra.source && d.label === ds.label); if (old >= 0) datasets.splice(old, 1); }
+    const d = makeTable({ ...ds, ...extra });
+    datasets.push(d); out.push(d);
+  }
+  changed();
+  return out;
+}
+
+// figures asked for by other pages (OVITO charts → "Open in Graph Studio"); Graph Studio picks them up
+const pending = [];
+export function requestFigure(fig) { pending.push(fig); bus.emit("figreq", fig); }
+export function takeFigureRequests() { return pending.splice(0); }
+
 export function addTable(text, name) {
   const { columns, format } = parseTable(text, name);
   const keys = Object.keys(columns).map(k => ({ key: k, label: k, unit: /_nN$/.test(k) ? "nN" : /_K$/.test(k) ? "K" : "", category: "file", region: null, quantity: k }));
@@ -143,10 +172,7 @@ export function addFromJson(obj, name) {
   if (obj?.nanocut_session) { const out = []; for (const d of obj.datasets) out.push(...addFromJson(d, d.label)); return out; }
   if (obj?.rows && obj.rows[0]?.scalars) { const d = addResearch(obj, obj.label || name); d.params = { ...d.params, ...(obj.run_params || {}) }; return [d]; }
   if (obj?.columns) {                                                  // a saved table dataset
-    const keys = Object.keys(obj.columns), n = obj.columns[keys[0]].length;
-    const d = { id: obj.dataset_id || newId(), kind: "table", label: obj.label || name, format: obj.format || "table", columns: obj.columns, params: obj.params || {}, n,
-      keys: keys.map(k => ({ key: k, label: k, unit: "", category: "file", region: null, quantity: k })),
-      series(key) { return (obj.columns[key] || []).map(v => (v == null ? NaN : v)); }, frames() { return [...Array(n).keys()]; }, curveNames: () => [], mapNames: () => [] };
+    const d = makeTable({ label: obj.label || name, format: obj.format, columns: obj.columns, params: obj.params || {}, kind: obj.subkind || "table", note: obj.note, dataset_id: obj.dataset_id, source: obj.source });
     datasets.push(d); changed(); return [d];
   }
   throw new Error(`${name}: not a NanoCut results file`);
@@ -154,6 +180,6 @@ export function addFromJson(obj, name) {
 
 export function toJson(d) {
   if (d.kind === "research") return { ...d.raw, label: d.label, run_params: d.params, dataset_id: d.id };
-  return { kind_saved: "table", dataset_id: d.id, label: d.label, format: d.format, columns: d.columns, params: d.params };
+  return { kind_saved: "table", dataset_id: d.id, label: d.label, format: d.format, columns: d.columns, params: d.params, subkind: d.subkind, note: d.note, source: d.source };
 }
 export function sessionJson() { return { nanocut_session: 1, saved: new Date().toISOString(), datasets: datasets.map(toJson) }; }

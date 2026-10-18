@@ -149,3 +149,14 @@ table.guide th { white-space: nowrap; vertical-align: top; }
 table.guide td { vertical-align: top; }
 .guide-flow { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
 @media (max-width: 900px) { .guide-btn .guide-label { display: none; } }
+.task-wrap { position: relative; display: inline-block; }
+.task-ind { font-size: var(--fs-xs); }
+.task-ind.busy { border-color: var(--accent-line); color: var(--accent-strong); }
+.task-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 90; width: 380px; max-height: 60vh; overflow: auto; background: var(--bg-1); border: 1px solid var(--line-2); border-radius: var(--radius); box-shadow: var(--shadow-pop); padding: 10px; display: grid; gap: 8px; }
+.task-row { display: flex; gap: 8px; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 6px; }
+.task-box { align-items: flex-start; text-align: left; }
+.plot-tools { position: absolute; top: 2px; right: 4px; display: flex; gap: 4px; z-index: 3; opacity: 0.85; }
+.plot-tools .btn { padding: 1px 6px; font-size: 11px; min-height: 0; }
+.plot-menu { position: absolute; top: 24px; right: 4px; z-index: 4; background: var(--bg-1); border: 1px solid var(--line-2); border-radius: var(--radius); box-shadow: var(--shadow-pop); display: grid; padding: 4px; min-width: 210px; }
+.plot-menu button { text-align: left; background: none; border: 0; color: var(--text-0); padding: 5px 8px; cursor: pointer; font: inherit; font-size: var(--fs-sm); }
+.plot-menu button:hover { background: var(--accent-soft); }

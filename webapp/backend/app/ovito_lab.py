@@ -77,7 +77,8 @@ class _Worker:
         self.proc = None
 
 
-worker = _Worker()
+worker = _Worker()                           # the page's viewport, renders, exports (interactive)
+bg = _Worker()                               # long analyses (frames, pile-up, regime, research): never block the viewport
 
 
 def _prune():
@@ -348,7 +349,7 @@ def frames_job(body: dict = Body(...)):
 
     def run(progress=None):
         _prep(src, [0], progress)
-        info = worker.ask({"op": "info", "frame": 0, **src})
+        info = bg.ask({"op": "info", "frame": 0, **src})
         n = info["num_frames"]
         bad = [f for f in frames if not 0 <= f < n]
         if bad:
@@ -366,7 +367,7 @@ def frames_job(body: dict = Body(...)):
                     progress(k / len(frames), f"frame {f} ({k + 1} of {len(frames)})" + (f", about {eta:.0f} s left" if eta else ""))
                 _prep(src, [f] + (_refs(spec) if body.get("apply_pipeline") else []))
                 csv_path = OUT_DIR / f"frame_{f}_{uuid.uuid4().hex[:8]}.csv" if want_csv and HOSTED else None
-                row = worker.ask({"op": "frame_table", "spec": spec, "frame": f, "apply_pipeline": bool(body.get("apply_pipeline")),
+                row = bg.ask({"op": "frame_table", "spec": spec, "frame": f, "apply_pipeline": bool(body.get("apply_pipeline")),
                                   "include_derived": bool(body.get("include_derived")), "dump_columns": dump_cols,
                                   "raw_properties": info["properties"], "stats": want_stats,
                                   "zip_path": str(zip_file) if zip_file else None, "csv_path": str(csv_path) if csv_path else None})
@@ -384,7 +385,7 @@ def frames_job(body: dict = Body(...)):
         meta = dict(source=src.get("label"), import_path=src["import_path"], total_frames=n, frames=frames, dump_columns=dump_cols,
                     apply_pipeline=bool(body.get("apply_pipeline")), include_derived=bool(body.get("include_derived")),
                     modifiers=[m.get("type") for m in spec.get("modifiers") or [] if m.get("enabled", True)] if body.get("apply_pipeline") else [],
-                    ovito=worker.info.get("ovito") if worker.info else None, seconds=round(time.time() - t0, 2))
+                    ovito=bg.info.get("ovito") if bg.info else None, seconds=round(time.time() - t0, 2))
         return dict(zip=zip_name, url=None if save_to or not zip_name else f"/api/ovito/file/{zip_name}", saved_to=str(save_to) if save_to else None,
                     bytes=Path(zip_file).stat().st_size if zip_file else sum(r.get("csv_bytes", 0) for r in rows), rows=rows, meta=meta)
     key = hashlib.sha1(json.dumps([frames, body.get("apply_pipeline"), body.get("include_derived"), want_csv, want_stats]).encode()).hexdigest()[:12]
@@ -425,7 +426,7 @@ def pileup_job(body: dict = Body(...)):
                 if progress:
                     progress(k / len(frames), f"frame {f} ({k + 1} of {len(frames)})")
                 _prep(src, [f])
-                rows.append(worker.ask({"op": "pileup", "spec": spec, "frame": f, "params": prm}))
+                rows.append(bg.ask({"op": "pileup", "spec": spec, "frame": f, "params": prm}))
         finally:
             _cancel.discard(token)
         return dict(rows=rows, params=prm, seconds=round(time.time() - t0, 2))
@@ -468,7 +469,7 @@ def regime_job(body: dict = Body(...)):
                     eta = (time.time() - t0) / k * (len(frames) - k) if k else None
                     progress(k / len(frames), f"frame {f} ({k + 1} of {len(frames)})" + (f", about {eta:.0f} s left" if eta else ""))
                 _prep(src, [f])
-                rows.append(worker.ask({"op": "regime", "spec": spec, "frame": f, "params": prm}))
+                rows.append(bg.ask({"op": "regime", "spec": spec, "frame": f, "params": prm}))
         finally:
             _cancel.discard(token)
         return dict(rows=rows, params=prm, seconds=round(time.time() - t0, 2), source=src.get("label"))
@@ -501,7 +502,7 @@ def research_defaults(body: dict = Body(...)):
         spec = _spec(body)
     except ValueError as e:
         raise HTTPException(422, str(e))
-    info_ = worker.ask({"op": "info", "frame": 0, **spec["source"]})
+    info_ = bg.ask({"op": "info", "frame": 0, **spec["source"]})
     out = dict(types={}, tool_types=[], dt_ps=None, structure="none", source="type names", direction="-x")
     found = _find_params(spec["source"])
     if found:
@@ -525,6 +526,37 @@ def research_defaults(body: dict = Body(...)):
     return out
 
 
+@router.post("/research/sidefiles")
+def research_sidefiles(body: dict = Body(...)):
+    """LAMMPS text output next to the dumps (fix ave/time files such as *_forces_temps.txt, log files), parsed into
+    tables for Graph Studio. Local sources only; files above 50 MB and dump files are skipped."""
+    from . import graph_import
+    try:
+        spec = _spec(body)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    src = spec["source"]
+    if src.get("remote") or src.get("blob") or src.get("upload"):
+        return dict(datasets=[])
+    d = Path(src["import_path"]).parent
+    out, seen = [], set()
+    for folder in (d, d.parent):
+        for f in sorted(folder.glob("*")):
+            if f in seen or not f.is_file() or f.stat().st_size > 50 << 20 or not (f.suffix.lower() in (".txt", ".log", ".dat", ".csv") or f.name.startswith("log")):
+                continue
+            seen.add(f)
+            try:
+                head = f.read_bytes()[:4000]
+                if b"ITEM: TIMESTEP" in head:
+                    continue
+                for ds in graph_import.parse(f.name, f.read_bytes()):
+                    if len(ds.get("columns") or {}) >= 2:
+                        out.append(dict(ds, path=str(f)))
+            except Exception:
+                continue
+    return dict(datasets=out[:20])
+
+
 @router.post("/research/volumes")
 def research_volumes(body: dict = Body(...)):
     try:
@@ -533,7 +565,7 @@ def research_volumes(body: dict = Body(...)):
         raise HTTPException(422, str(e))
     def run(progress=None):
         _prep(spec["source"], [0], progress)
-        return worker.ask({"op": "volumes", "spec": spec})
+        return bg.ask({"op": "volumes", "spec": spec})
     return _job(f"ovito-volumes:{spec['source']['import_path']}", "OVITO estimates atomic volumes (Voronoi, frame 0)", run)
 
 
@@ -572,12 +604,12 @@ def research_job(body: dict = Body(...)):
                     eta = (time.time() - t0) / k * (len(frames) - k) if k else None
                     progress(k / len(frames), f"frame {f} ({k + 1} of {len(frames)})" + (f", about {eta:.0f} s left" if eta else ""))
                 _prep(src, [f])
-                rows.append(worker.ask({"op": "research", "spec": spec, "frame": f, "cfg": cfg}))
+                rows.append(bg.ask({"op": "research", "spec": spec, "frame": f, "cfg": cfg}))
         finally:
             _cancel.discard(token)
         rows = research.finalize(rows, cfg)
         return dict(rows=rows, catalogue=research.catalogue(rows), cfg=cfg, source=src.get("label"), import_path=src["import_path"],
-                    seconds=round(time.time() - t0, 2), ovito=worker.info.get("ovito") if worker.info else None,
+                    seconds=round(time.time() - t0, 2), ovito=bg.info.get("ovito") if bg.info else None,
                     params=_find_params(src)[1] if _find_params(src) else None)
     key = hashlib.sha1(json.dumps([frames, cfg], sort_keys=True).encode()).hexdigest()[:12]
     return _job(f"ovito-research:{token}:{key}", "OVITO research analysis", run)

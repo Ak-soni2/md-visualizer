@@ -6,6 +6,7 @@
 import * as api from "../api.js";
 import { el, clear, num, toast, loading, errorState, download } from "../ui.js";
 import { LinePlot } from "../plot.js";
+import * as tasks from "../tasks.js";
 import { selectFrames } from "./ovito_frames.js";
 
 export const dbtDefaults = () => ({
@@ -95,30 +96,45 @@ export function buildDbtPanel(p, ctx) {
       modeBox, summary, el("div", { class: "field-row" }, btn), status));
   buildMode(); upd();
 
-  async function run() {
-    if (running) return;
-    running = true; upd();
-    const token = Math.random().toString(16).slice(2);
-    const box = loading(`OVITO analyses ${sel.frames.length} frames…`, true);
-    let cancelled = false;
-    clear(status).append(box, el("button", { class: "btn ghost", type: "button", onclick: () => { cancelled = true; api.post(`/api/ovito/frames/cancel/${token}`).catch(() => {}); } }, "Cancel"));
-    const params = Object.fromEntries(Object.keys(dbtDefaults()).filter(k => !["crit", "sel"].includes(k)).map(k => [k, D[k]]));
-    try {
-      let rows = [], seconds = 0;
-      const per = api.apiHosted() ? 3 : sel.frames.length;              // hosted: each request stays under 300 s
-      for (let k = 0; k < sel.frames.length; k += per) {
-        if (cancelled) throw new Error("cancelled");
-        const r = await api.job("/api/ovito/regime", { method: "POST", pollMs: 400, onProgress: x => box.update(x), timeoutMs: 24 * 3600e3,
-          data: { spec: ctx.spec(), frames: sel.frames.slice(k, k + per), params, token } });
-        rows = rows.concat(r.rows); seconds += r.seconds;
-        box.update({ progress: (k + per) / sel.frames.length, message: `${Math.min(sel.frames.length, k + per)} of ${sel.frames.length} frames` });
-      }
-      last = { rows, params, seconds };
-      clear(status).append(el("button", { class: "btn primary", type: "button", onclick: () => results(last) }, "Show results"));
-      results(last);
-    } catch (e) { clear(status).append(errorState(e)); }
-    finally { running = false; upd(); }
+  // runs as a background task: switching tabs does not stop it; coming back shows its progress or its result
+  const KEY = `dbt:${JSON.stringify(ctx.spec().source)}`;
+  function attach(autoShow) {
+    const t = tasks.get(KEY);
+    if (!t) return;
+    if (t.status === "running") {
+      running = true; upd();
+      clear(status).append(tasks.progressBox(t, { onCancel: () => t.cancel?.() }));
+      t.promise.finally(() => { running = false; if (p.isConnected) { upd(); attach(true); } });
+    } else if (t.status === "error") clear(status).append(errorState(t.error));
+    else {
+      last = t.result;
+      clear(status).append(el("div", { class: "banner" }, `${last.rows.length} frames analysed.`), el("button", { class: "btn primary", type: "button", onclick: () => results(last) }, "Show results"));
+      if (autoShow && !t.shown) { t.shown = true; results(last); }
+      else if (!regimeShown) { regimeShown = true; ctx.setRegime(classify(last.rows, D.crit)); }
+    }
   }
+  let regimeShown = false;
+  function run() {
+    if (running) return;
+    const params = Object.fromEntries(Object.keys(dbtDefaults()).filter(k => !["crit", "sel"].includes(k)).map(k => [k, D[k]]));
+    const frames = sel.frames.slice(), spec0 = ctx.spec();
+    if (tasks.get(KEY)?.status !== "running") tasks.forget(KEY);
+    tasks.start(KEY, `Ductile–brittle · ${frames.length} frames`, async (update, t) => {
+      const token = Math.random().toString(16).slice(2);
+      t.cancel = () => api.post(`/api/ovito/frames/cancel/${token}`).catch(() => {});
+      let rows = [], seconds = 0;
+      const per = api.apiHosted() ? 3 : frames.length;                  // hosted: each request stays under 300 s
+      for (let k = 0; k < frames.length; k += per) {
+        const r = await api.job("/api/ovito/regime", { method: "POST", pollMs: 400, timeoutMs: 72 * 3600e3,
+          onProgress: x => update({ progress: (k + (x.progress || 0) * Math.min(per, frames.length - k)) / frames.length, message: x.message }),
+          data: { spec: spec0, frames: frames.slice(k, k + per), params, token } });
+        rows = rows.concat(r.rows); seconds += r.seconds;
+      }
+      return { rows, params, seconds };
+    }, { href: "#/ovito" });
+    attach(true);
+  }
+  attach(false);
 
   function results(R) {
     const rows = R.rows, x = rows.map(r => r.frame);

@@ -7,6 +7,8 @@ import { bus } from "../state.js";
 import { el, clear, num, toast, loading, download } from "../ui.js";
 import * as store from "../research_store.js";
 import { scalarsCsv } from "./ovito_research.js";
+import * as tasks from "../tasks.js";
+import { startResearch } from "../autoresearch.js";
 
 const KEY = "nanocut.graphs.v1";
 const FORMATS = [["png", "PNG"], ["jpg", "JPEG"], ["tiff", "TIFF"], ["webp", "WebP"], ["svg", "SVG"], ["pdf", "PDF"], ["eps", "EPS"], ["ps", "PS"]];
@@ -48,7 +50,7 @@ const withUnit = m => (m.unit ? `${m.label} (${m.unit})` : m.label);
 const shortLabel = m => m.label;
 function dsOf(f) { const all = store.list(); const ds = (f.ds || []).map(store.byId).filter(Boolean); return ds.length ? ds : [all.find(d => d.kind === "research") || all[0]].filter(Boolean); }
 function defaultX(d) { if (!d) return "frame"; for (const k of XPREF) if (d.keys.some(x => x.key === k) && d.series(k).some(Number.isFinite)) return k; return d.keys[0]?.key; }
-function stdKey(k) { return k.replace(".mean_GPa@", ".std_GPa@").replace(/\.mean@/, ".std@"); }
+function stdKey(k) { return k.replace(".mean_GPa@", ".std_GPa@").replace(/\.mean@/, ".std@").replace(/ mean( \(type \d+\))?$/, " std$1"); }
 function steadyMask(d, from) {
   const xd = d.kind === "research" ? d.series("cut_distance") : null;
   const x = xd && xd.some(Number.isFinite) ? xd : d.frames();
@@ -168,7 +170,23 @@ function autoFigures(only) {
   const ser = (name, keys, extra = {}) => { const ys = keys.filter(k => has(typeof k === "string" ? k : k.key)).map(k => (typeof k === "string" ? { key: k } : k)); if (ys.length) add(name, "series", { ys, ...extra }); };
   if (d.kind === "table") {
     const tag = d.label.replace(/\.[^.]+$/, "").replace(/[^\w.\-]+/g, "_");
-    for (const k of d.keys.slice(1)) ser(`${tag}_${k.key}_vs_${d.keys[0].key}`, [k.key], { x: d.keys[0].key });
+    const keys = d.keys.map(k => k.key);
+    if (d.subkind === "atoms") {                                       // one row per atom: quantities vs position
+      const pos = ["y", "x", "z"].filter(k => keys.includes(k));
+      const qs = keys.filter(k => !["id", "type", "mol", "x", "y", "z", "ix", "iy", "iz"].includes(k));
+      for (const q of qs.slice(0, 30)) for (const p of pos.slice(0, 2)) add(`${tag}_${q}_vs_${p}`.replace(/[\[\]]/g, ""), "scatter", { x: p, ys: [{ key: q }], style: { marker_size: 1 } });
+      return out;
+    }
+    if (d.subkind === "frames") {                                      // one row per frame: column statistics
+      const X = keys.includes("step") && d.n > 1 ? "step" : "frame";
+      if (d.n < 2) { toast(`${d.label}: one frame only — use the atoms table, or analyse several frames.`, "warn"); return out; }
+      const sums = keys.filter(k => / sum \(type \d+\) \[nN\]$/.test(k));
+      if (sums.length) ser(`${tag}_force_sums_by_type_nN`, sums, { x: X });
+      for (const k of keys.filter(k => / mean$/.test(k))) ser(`${tag}_${k.replace(/ mean$/, "")}_mean`.replace(/[\[\]]/g, ""), [{ key: k, err: keys.includes(k.replace(/ mean$/, " std")) }], { x: X });
+      return out;
+    }
+    const X = ["step", "Step", "frame", "Frame", "time", "Time"].find(k => keys.includes(k)) || keys[0];
+    for (const k of keys.filter(k => k !== X)) ser(`${tag}_${k}_vs_${X}`, [k], { x: X });
     return out;
   }
   const R = ["contact", "chip", "subsurface", "workpiece", "tool"];
@@ -249,24 +267,37 @@ export async function render(root) {
   const dataBox = el("div", { class: "table-wrap gs-data", hidden: true });
   const fileIn = el("input", { type: "file", multiple: true, accept: ".json,.txt,.csv,.tsv,.dat,.log,.lammps,*", hidden: true, onchange: e => importFiles([...e.target.files]) });
   const setIn = el("input", { type: "file", accept: ".json", hidden: true, onchange: e => loadSet(e.target.files[0]) });
+  const importBox = el("div", { class: "banner", hidden: true, role: "status" });
   root.append(fileIn, setIn);
   const cur = () => G.figs.find(f => f.id === G.cur) || G.figs[0];
   const off = bus.on ? bus.on("datasets", () => { if (alive) { buildLeft(); buildRight(); refresh(); } }) : null;
+  let lastStates = "";
+  const offTasks = bus.on("tasks", () => { const st = tasks.list().map(t => t.key + t.status).join(); if (alive && st !== lastStates) { lastStates = st; buildLeft(); } });
+  function takeRequests() {
+    const req = store.takeFigureRequests();
+    for (const f of req) { f.id = uid(); f.style = f.style || {}; G.figs.push(f); G.cur = f.id; }
+    if (req.length) { persist(); buildAll(); toast(`${req.length} chart${req.length > 1 ? "s" : ""} from the OVITO tab added (gridlines off; every format in Download).`, "ok"); }
+  }
+  const offReq = bus.on("figreq", () => { if (alive) takeRequests(); });
 
   function buildLeft() {
     clear(left);
     const ds = store.list();
     left.append(el("section", { class: "st-sec" }, el("h4", {}, "Data"),
       ds.length ? el("ul", { class: "gs-list" }, ds.map(d => el("li", {},
-        el("div", { class: "gs-ds" }, el("b", {}, d.label), el("span", { class: "muted small" }, `${d.kind === "research" ? "research analysis" : d.format} · ${d.n} ${d.kind === "research" ? "frames" : "rows"} · ${d.keys.length} quantities`)),
+        el("div", { class: "gs-ds" }, el("b", {}, d.label), el("span", { class: "muted small" }, `${d.kind === "research" ? "research analysis" : d.format} · ${d.n} ${d.kind === "research" || d.subkind === "frames" ? "frames" : d.subkind === "atoms" ? "atoms" : "rows"} · ${d.keys.length} quantities`),
+          d.note ? el("span", { class: "muted small" }, d.note) : null),
         el("div", { class: "field-row" },
           el("button", { class: "btn ghost sm", type: "button", "data-tip": "Rename and set run parameters (speed, depth …) for across-run plots", onclick: () => paramsModal(d) }, "Edit"),
           el("button", { class: "btn ghost sm", type: "button", onclick: () => download(`${d.label.replace(/[^\w.\-]+/g, "_")}.nanocut-results.json`, JSON.stringify(store.toJson(d)), "application/json") }, "Save"),
           d.kind === "research" ? el("button", { class: "btn ghost sm", type: "button", onclick: () => download(`${d.label.replace(/[^\w.\-]+/g, "_")}_all_quantities.csv`, scalarsCsv(d), "text/csv") }, "CSV") : null,
           el("button", { class: "btn ghost sm", type: "button", "aria-label": `Remove ${d.label}`, onclick: () => store.remove(d.id) }, "✕"))))) :
-        el("p", { class: "muted small" }, "No data yet. Run OVITO page → Research, or load files: saved results (.json), LAMMPS fix ave/time files (e.g. *_forces_temps.txt), LAMMPS logs, CSV/TSV."),
-      el("div", { class: "field-row wrap" }, el("button", { class: "btn", type: "button", onclick: () => fileIn.click() }, "Load files…"),
-        el("a", { class: "btn ghost", href: "#/ovito" }, "OVITO → Research"),
+        el("p", { class: "muted small" }, "No data yet. Open a dump folder in the OVITO tab (it is analysed automatically), or use Analyse dumps…, or Load files… (dumps, frame CSVs/ZIP, Excel, LAMMPS logs, force files, CSV)."),
+      importBox,
+      ...tasks.list().filter(t => t.key.startsWith("research:") && t.status === "running").map(t => tasks.progressBox(t, { onCancel: () => t.cancel?.() })),
+      el("div", { class: "field-row wrap" }, el("button", { class: "btn", type: "button", "data-tip": "LAMMPS dumps (.lammpstrj), per-atom CSVs or the frame-CSV ZIP of the OVITO Export tab, the statistics Excel, LAMMPS logs, fix ave/time files (e.g. *_forces_temps.txt), any CSV/TSV, saved results (.json)", onclick: () => fileIn.click() }, "Load files…"),
+        el("button", { class: "btn", type: "button", "data-tip": "Choose a folder with dump files: the full research analysis (stresses, temperatures, forces, structure, RDF …) runs in the background and appears here", onclick: analyseDumps }, "Analyse dumps…"),
+        el("a", { class: "btn ghost", href: "#/ovito" }, "OVITO tab"),
         ds.length ? el("button", { class: "btn ghost", type: "button", onclick: () => download(`nanocut_session_${ds.length}_datasets.json`, JSON.stringify(store.sessionJson()), "application/json") }, "Save session") : null)));
     const figs = el("ul", { class: "gs-list gs-figs" }, G.figs.map(f => el("li", { class: f.id === cur()?.id ? "on" : "", onclick: () => { G.cur = f.id; persist(); buildLeft(); buildRight(); refresh(); } },
       el("span", { class: "gs-fname" }, f.name), el("span", { class: "muted small" }, (KINDS.find(k => k[0] === f.kind) || [, ""])[1].split(":")[0]))));
@@ -520,13 +551,41 @@ export async function render(root) {
   async function importFiles(files) {
     for (const file of files) {
       try {
-        const text = await file.text();
-        if (/\.json$/i.test(file.name)) { const obj = JSON.parse(text); if (obj.nanocut_figures) { loadSetObj(obj); continue; } store.addFromJson(obj, file.name.replace(/\.nanocut-results\.json$|\.json$/i, "")); }
-        else store.addTable(text, file.name);
-        toast(`${file.name} loaded.`, "ok");
-      } catch (e) { toast(`${file.name}: ${e.message}`, "err", 8000); }
+        if (/\.json$/i.test(file.name)) {
+          const obj = JSON.parse(await file.text());
+          if (obj.nanocut_figures) { loadSetObj(obj); continue; }
+          store.addFromJson(obj, file.name.replace(/\.nanocut-results\.json$|\.json$/i, ""));
+          toast(`${file.name} loaded.`, "ok"); continue;
+        }
+        // LAMMPS dumps, per-atom CSVs, ZIPs of frame CSVs, Excel, logs, ave/time files, any table: read by the backend
+        importBox.hidden = false; importBox.textContent = `Reading ${file.name} (${(file.size / 1e6).toFixed(1)} MB)…`;
+        const res = await fetch(api.apiUrl(`/api/graphs/import?name=${encodeURIComponent(file.name)}`), { method: "POST", body: file });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j.detail || res.statusText);
+        const ds = store.addImported(j.datasets.filter(d => d.kind !== "error"));
+        toast(`${file.name}: ${ds.map(d => `${d.label} (${d.n} rows)`).join(", ")}.`, "ok", 7000);
+        for (const e of j.datasets.filter(d => d.kind === "error")) toast(`${e.label}: ${e.note}`, "warn", 8000);
+        if (/ITEM: TIMESTEP/.test(await file.slice(0, 2000).text())) toast("A LAMMPS dump gives column statistics here. For stresses, temperatures, RDF … use “Analyse dumps…” (or the OVITO tab, which analyses automatically).", "info", 9000);
+      } catch (e) { toast(`${file.name}: ${e.message}`, "err", 9000); }
+      finally { importBox.hidden = true; }
     }
     fileIn.value = "";
+  }
+  async function analyseDumps() {
+    if (api.apiHosted()) { toast("On the hosted site, open the dumps in the OVITO tab (Upload files…) and run Research there.", "warn", 8000); return; }
+    try {
+      const r = (await api.post("/api/local/pick", { kind: "folder", start: "" }, 1800000)).body;
+      if (!r.path) return;
+      const sc = await api.get(`/api/studio/scan?path=${encodeURIComponent(r.path)}`);
+      const seqs = (sc.sequences || []).slice().sort((a, b) => (b.count || 0) - (a.count || 0));
+      if (!seqs.length) { toast("No LAMMPS dump files in that folder (searched two levels deep).", "warn"); return; }
+      const sq = seqs[0];
+      const dir = sq.dir || r.path;
+      const label = `${dir.split(/[\\/]/).pop()}/${sq.pattern}`;
+      startResearch({ source: { path: dir, pattern: sq.pattern }, label });
+      toast(`Analysing ${label} in the background (${seqs.length > 1 ? `largest of ${seqs.length} sequences; ` : ""}up to 60 frames). It appears here when finished.`, "info", 9000);
+      buildLeft();
+    } catch (e) { toast(e.status === 501 ? "No folder dialog available: open the folder in the OVITO tab instead." : e.message, "err", 8000); }
   }
   function loadSetObj(obj) { const figs = obj.figs || []; for (const f of figs) { f.id = uid(); f.ds = []; } G.figs.push(...figs); G.cur = figs[0]?.id || G.cur; persist(); buildAll(); toast(`${figs.length} figures loaded (applied to the first dataset).`, "ok"); }
   async function loadSet(file) { try { loadSetObj(JSON.parse(await file.text())); } catch (e) { toast(e.message, "err"); } setIn.value = ""; }
@@ -547,5 +606,7 @@ export async function render(root) {
   }
   function buildAll() { buildLeft(); buildRight(); refresh(); }
   buildAll();
-  return () => { alive = false; if (previewUrl) URL.revokeObjectURL(previewUrl); off?.(); };
+  takeRequests();
+  store.ready.then(() => { if (alive) { buildLeft(); buildRight(); refresh(); } });
+  return () => { alive = false; if (previewUrl) URL.revokeObjectURL(previewUrl); off?.(); offTasks(); offReq(); };
 }

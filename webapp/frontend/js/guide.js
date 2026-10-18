@@ -13,10 +13,19 @@ const TABS = [
   ["OVITO", "Alt 9", "The official OVITO engine on any dump folder, file, upload or HPC cluster. Side tabs: Pipeline (modifiers), Render (images), Export (CSV ZIP, statistics, Excel), Ductile–brittle (regime per frame), Measure (pile-up height, two-point distances), Research (every stress, temperature, force, structure, RDF … per frame and region), Results, More."],
   ["Graphs", "Alt 0", "Graph Studio: plot any analysed quantity against any other (force vs distance, temperature vs speed, correlations, RDF, maps …), style everything (grids, titles, fonts, sizes), download PNG, JPEG, TIFF, WebP, SVG, PDF, EPS, PS or a ZIP of all graphs with their data."],
 ];
+const GRAPHS = [
+  "Get data in (any of these): open a dump folder in the OVITO tab — it is analysed automatically in the background (up to 60 frames; ⏳ in the top bar shows progress) and the force/temperature/log files next to the dumps are added too; or Graphs → Analyse dumps… (choose a folder); or Graphs → Load files… (dump files, the frame-CSV ZIP or per-atom CSVs from OVITO → Export, the statistics Excel, LAMMPS logs, *_forces_temps.txt, any CSV).",
+  "Graphs → Generate all graphs: every standard figure for the data present (forces, μ, temperatures, every stress, structure, RDF, maps, correlations …).",
+  "Click a figure in the list. Right side: Type (series, correlation, matrix, distribution, map, stacked, bar, across runs), X and Y quantities (filter by region: contact zone, chip, subsurface …), ±std, smoothing, fit.",
+  "Style: title, labels, fonts, gridlines on/off, minor grid, ranges, log axes, legend, colours, size in mm, DPI, transparent background. “Apply style to all” copies the look to every figure.",
+  "Formats (top): tick PNG, JPEG, TIFF, WebP, SVG, PDF, EPS, PS → Download figure, or Download all as ZIP (with data: every number as CSV).",
+  "Several runs (speed, depth …): analyse each, set its parameters with Edit in the Data list, then use “Across runs” figures, e.g. temperature vs cutting speed.",
+  "Charts in the OVITO tab (Ductile–brittle, Measure, Export statistics): ⤓ Download → PNG without gridlines, all formats without gridlines, CSV, or Open in Graph Studio.",
+];
 const FLOW = [
   "Generate decks (Decks) → run them on your PC or cluster with LAMMPS.",
-  "Open the dumps: OVITO tab → Open folder… (or HPC… for files on the cluster).",
-  "OVITO → Research: choose frames → Analyse frames (stresses, temperatures, forces, structure, RDF …).",
+  "Open the dumps: OVITO tab → Open folder… (or HPC… for files on the cluster). The research analysis starts by itself in the background.",
+  "Long jobs (Research, Ductile–brittle, pile-up, export) keep running when you switch tabs; come back to see the result.",
   "Graphs → Generate all graphs → adjust titles, grids and sizes → Download all as ZIP.",
   "Several runs (different speed, depth …): analyse each, set its run parameters (Graphs → Data → Edit), then use “Across runs” figures (e.g. temperature vs cutting speed).",
 ];
@@ -30,6 +39,7 @@ export function openGuide() {
         el("table", { class: "data guide" }, el("tbody", {}, TABS.map(([t, k, d]) => el("tr", {},
           el("th", {}, el("a", { href: `#/${t.toLowerCase()}`, onclick: () => back.remove() }, t)), el("td", { class: "muted small" }, k), el("td", {}, d))))),
         el("h4", {}, "Typical workflow"), el("ol", { class: "guide-flow" }, FLOW.map(s => el("li", {}, s))),
+        el("h4", {}, "How to use Graphs"), el("ol", { class: "guide-flow" }, GRAPHS.map(s => el("li", {}, s))),
         el("p", { class: "muted small" }, "Keyboard: Alt+1 … Alt+0 switch tabs, ? shows shortcuts, Esc closes dialogs. Hover any control with a dotted underline or ⓘ for its explanation. Full documentation: README.md, webapp/README.md, BIBLE.md in the program folder."))));
   const esc = e => { if (e.key === "Escape") { back.remove(); document.removeEventListener("keydown", esc); } };
   document.addEventListener("keydown", esc);

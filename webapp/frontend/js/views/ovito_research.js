@@ -8,6 +8,8 @@ import * as api from "../api.js";
 import { el, clear, num, toast, loading, errorState, download } from "../ui.js";
 import { selectFrames } from "./ovito_frames.js";
 import * as store from "../research_store.js";
+import * as tasks from "../tasks.js";
+import { taskKey, AUTO_MAX_FRAMES } from "../autoresearch.js";
 
 export const researchDefaults = () => ({
   sel: { mode: "interval", interval: 1, start: 0, end: null, step: 1, list: "" },
@@ -97,6 +99,9 @@ export function buildResearchPanel(p, ctx) {
   p.append(
     el("section", { class: "st-sec" }, el("h4", {}, "Research analysis"),
       el("p", { class: "muted small" }, "Per frame and per region (all atoms, tool, workpiece, NanoCut layers, each type, contact zone, chip, subsurface): every stress measure, temperatures, forces (Fc, Ft, μ, friction angle, specific energy, work), energies, displacement/MSD, coordination and structure fractions, atomic strain, damage depth, roughness, pile-up, chip; RDF, bond angles, histograms, depth profiles and maps. Plot and export everything in Graph Studio.")),
+    el("section", { class: "st-sec" }, el("h4", {}, "Automatic"),
+      el("label", { class: "check", "data-tip": "When a folder or file is opened, analyse it in the background with the run's defaults (up to " + AUTO_MAX_FRAMES + " evenly spaced frames), so Graph Studio has everything. Runs on a separate OVITO worker; the viewport stays responsive." },
+        el("input", { type: "checkbox", checked: ctx.S.autoResearch !== false, onchange: e => { ctx.S.autoResearch = e.target.checked; save(); } }), "Analyse automatically when a trajectory is opened")),
     el("section", { class: "st-sec" }, el("h4", {}, "Particle types"), typeBox),
     el("section", { class: "st-sec" }, el("h4", {}, "Run"),
       row("Time step (ps)", numIn(R, "dt_ps", { min: 0 }), "MD time step of the dumped run: time = step × dt (0.0005 ps = 0.5 fs)."),
@@ -126,37 +131,52 @@ export function buildResearchPanel(p, ctx) {
   buildMode(); upd();
   if (!R.types) loadDefaults(false); else buildTypes();
 
-  async function run() {
+  // the analysis runs as a background task (keeps going when you switch tabs; same task as the automatic one)
+  function attach() {
+    const t = tasks.get(taskKey(ctx.spec().source));
+    if (!t) return;
+    if (t.status === "running") { clear(status).append(tasks.progressBox(t, { onCancel: () => t.cancel?.() })); running = true; upd(); t.promise.finally(() => { running = false; if (p.isConnected) { upd(); attach(); } }); return; }
+    if (t.status === "error") { clear(status).append(errorState(t.error)); return; }
+    const d = store.byId(t.result?.dataset);
+    if (!d) return;
+    const res = d.raw;
+    clear(status).append(el("div", { class: "banner" }, `${res.rows.length} frames analysed (${Object.keys(res.catalogue).length} quantities per frame, OVITO ${res.ovito || ""}, ${(res.seconds || 0).toFixed(1)} s). Dataset “${d.label}” is in Graph Studio${t.result.side ? ` with ${t.result.side} LAMMPS output table(s) from the same folder` : ""}.`),
+      ...[...new Set(res.rows.flatMap(r => r.notes || []))].map(m => el("div", { class: "banner warn" }, m)),
+      summaryTable(res.rows[res.rows.length - 1].scalars),
+      el("div", { class: "field-row" }, el("a", { class: "btn primary", href: "#/graphs" }, "Open Graph Studio"),
+        el("button", { class: "btn", type: "button", onclick: () => download(`${safe(d.label)}.nanocut-results.json`, JSON.stringify(store.toJson(d)), "application/json") }, "Save results (.json)"),
+        el("button", { class: "btn", type: "button", onclick: () => download(`${safe(d.label)}_all_quantities.csv`, scalarsCsv(d), "text/csv") }, "All quantities (.csv)")));
+  }
+  attach();
+
+  function run() {
     if (running) return;
     const missing = info.types.filter(t => !R.types?.[String(t.id)]?.volume).map(t => t.id);
     if (missing.length) toast(`No atomic volume for type(s) ${missing.join(", ")}: their stresses will be missing.`, "warn", 7000);
-    running = true; upd();
-    const token = Math.random().toString(16).slice(2);
-    const box = loading(`OVITO analyses ${sel.frames.length} frames…`, true);
-    let cancelled = false;
-    clear(status).append(box, el("button", { class: "btn ghost", type: "button", onclick: () => { cancelled = true; api.post(`/api/ovito/frames/cancel/${token}`).catch(() => {}); } }, "Cancel"));
-    const cfg = Object.fromEntries(Object.entries(R).filter(([k]) => !["sel", "label", "defaultsFrom"].includes(k)));
-    try {
-      const per = api.apiHosted() ? 3 : sel.frames.length;              // hosted: each request stays under 300 s
+    const cfg = Object.fromEntries(Object.entries(R).filter(([k]) => !["sel", "label", "defaultsFrom", "autoResearch"].includes(k)));
+    const label = R.label || info.label || ctx.S.last?.pattern || "analysis";
+    const source = ctx.spec().source, frames = sel.frames.slice();
+    const old = tasks.get(taskKey(source));
+    if (old && old.status !== "running") tasks.forget(old.key);
+    tasks.start(taskKey(source), `Research analysis · ${label}`, async (update, t) => {
+      const token = Math.random().toString(16).slice(2);
+      t.cancel = () => api.post(`/api/ovito/frames/cancel/${token}`).catch(() => {});
+      const per = api.apiHosted() ? 3 : frames.length;                   // hosted: each request stays under 300 s
       let res = null;
-      for (let k = 0; k < sel.frames.length; k += per) {
-        if (cancelled) throw new Error("cancelled");
-        const part = await api.job("/api/ovito/research", { method: "POST", pollMs: 500, timeoutMs: 24 * 3600e3, onProgress: x => box.update({ ...x, message: `${x.message || ""}${per < sel.frames.length ? ` · batch ${k / per + 1}` : ""}` }),
-          data: { spec: ctx.spec(), frames: sel.frames.slice(k, k + per), cfg, token } });
+      for (let k = 0; k < frames.length; k += per) {
+        const part = await api.job("/api/ovito/research", { method: "POST", pollMs: 500, timeoutMs: 72 * 3600e3,
+          onProgress: x => update({ progress: (k + (x.progress || 0) * Math.min(per, frames.length - k)) / frames.length, message: x.message }),
+          data: { spec: { source, frame: 0, modifiers: [] }, frames: frames.slice(k, k + per), cfg, token } });
         if (!res) res = part; else { res.rows.push(...part.rows); Object.assign(res.catalogue, part.catalogue); res.seconds += part.seconds; }
       }
       store.finalizeRows(res.rows, R.dt_ps);
-      const label = R.label || info.label || ctx.S.last?.pattern || "analysis";
+      store.removeSource(res.import_path);
       const d = store.addResearch(res, label);
-      clear(status).append(el("div", { class: "banner" }, `${res.rows.length} frames analysed (${Object.keys(res.catalogue).length} quantities per frame, OVITO ${res.ovito || ""}, ${res.seconds.toFixed(1)} s). Dataset “${d.label}” is in Graph Studio.`),
-        ...[...new Set(res.rows.flatMap(r => r.notes || []))].map(m => el("div", { class: "banner warn" }, m)),
-        summaryTable(res.rows[res.rows.length - 1].scalars),
-        el("div", { class: "field-row" }, el("a", { class: "btn primary", href: "#/graphs" }, "Open Graph Studio"),
-          el("button", { class: "btn", type: "button", onclick: () => download(`${safe(label)}.nanocut-results.json`, JSON.stringify(store.toJson(d)), "application/json") }, "Save results (.json)"),
-          el("button", { class: "btn", type: "button", onclick: () => download(`${safe(label)}_all_quantities.csv`, scalarsCsv(d), "text/csv") }, "All quantities (.csv)")));
-      toast("Research analysis finished.", "ok");
-    } catch (e) { clear(status).append(errorState(e)); }
-    finally { running = false; upd(); }
+      let side = [];
+      try { side = (await api.post("/api/ovito/research/sidefiles", { spec: { source, frame: 0, modifiers: [] } })).body.datasets || []; store.addImported(side, { source: res.import_path }); } catch { /* none */ }
+      return { dataset: d.id, frames: frames.length, side: side.length };
+    }, { href: "#/graphs" });
+    attach();
   }
 }
 

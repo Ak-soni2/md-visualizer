@@ -7,6 +7,7 @@ import * as api from "../api.js";
 import { el, clear, num, bytes, toast, loading, errorState, download } from "../ui.js";
 import { LinePlot } from "../plot.js";
 import { ZipWriter } from "../zip.js";
+import * as tasks from "../tasks.js";
 
 const STAT_LABEL = { n: "valid count", mean: "mean", std: "std", min: "min", max: "max" };
 const FORCE_COLS = [["mean_fx", "Mean Fx"], ["mean_fy", "Mean Fy"], ["mean_fz", "Mean Fz"], ["mean_magnitude", "Mean |F|"], ["magnitude_of_mean", "|Mean F|"],
@@ -96,6 +97,18 @@ export function buildFramesPanel(p, ctx) {
       fm ? el("p", { class: "muted small" }, `Per frame about ${bytes(fm.count * 22 * 14)} of CSV for ${num(fm.count)} particles; × ${num(sel.frames.length || 0)} frames before compression.`) : null),
     el("section", { class: "st-sec" }, el("h4", {}, "Export & analysis"), el("div", { class: "field-row" }, zipBtn, statBtn), status));
   buildMode(); update();
+  const KEY = `frames:${JSON.stringify(ctx.spec().source)}`;
+  (function attach() {
+    const t = tasks.get(KEY);
+    if (!t) return;
+    if (t.status === "running") {
+      running = true; update();
+      clear(status).append(tasks.progressBox(t, { onCancel: t.cancel }));
+      t.promise.finally(() => { running = false; if (p.isConnected) { update(); attach(); } });
+    } else if (t.status === "done" && !t.result.csv) {
+      clear(status).append(el("button", { class: "btn primary", type: "button", onclick: () => statsModal(t.result.r, t.result.selection, E, ctx.save) }, "Show statistics table"));
+    } else if (t.status === "done") clear(status).append(el("div", { class: "banner" }, `${t.result.r.rows.length} frames exported.`));
+  })();
 
   async function run(csv) {
     if (running || sel.errors.length) return;
@@ -110,13 +123,16 @@ export function buildFramesPanel(p, ctx) {
     }
     running = true; update();
     token = Math.random().toString(16).slice(2) + Date.now().toString(16);
-    const box = loading(csv ? `OVITO writes ${sel.frames.length} CSV files…` : `OVITO computes ${sel.frames.length} frames…`, true);
     let cancelled = false;
-    clear(status).append(box, el("button", { class: "btn ghost", type: "button", onclick: () => { cancelled = true; api.post(`/api/ovito/frames/cancel/${token}`).catch(() => {}); } }, "Cancel"));
     const selection = { mode: E.mode, ...(E.mode === "interval" ? { interval: E.interval } : E.mode === "range" ? { start: E.start, end: E.end ?? n - 1, step: E.step } : { list: E.list }) };
     const tag = E.mode === "interval" ? `interval_${E.interval}` : E.mode === "range" ? `range_${E.start}-${E.end ?? n - 1}_step_${E.step}` : `custom_${sel.frames.length}`;
-    const body = f => ({ spec: ctx.spec(), frames: f, apply_pipeline: E.apply && !ctx.noPipeline, include_derived: E.derived, csv, stats: !csv, token, save_to: saveTo });
-    try {
+    const spec0 = ctx.spec(), frames = sel.frames.slice();
+    const body = f => ({ spec: spec0, frames: f, apply_pipeline: E.apply && !ctx.noPipeline, include_derived: E.derived, csv, stats: !csv, token, save_to: saveTo });
+    // background task: keeps running when you switch tabs (the ZIP still downloads; statistics are shown when you come back)
+    if (tasks.get(KEY)?.status !== "running") tasks.forget(KEY);
+    const job = tasks.start(KEY, csv ? `Frame CSV export · ${frames.length} frames` : `Frame statistics · ${frames.length} frames`, async upd => {
+      const box = { update: upd };
+      const sel = { frames };
       let r;
       if (!api.apiHosted()) {
         r = await api.job("/api/ovito/frames", { method: "POST", pollMs: 400, onProgress: x => box.update(x), timeoutMs: 24 * 3600e3, data: body(sel.frames) });
@@ -141,6 +157,12 @@ export function buildFramesPanel(p, ctx) {
         r.meta.frames = sel.frames;
         if (zip) { r.blob = zip.finish(); r.bytes = r.blob.size; }
       }
+      return { r, csv, selection };
+    }, { href: "#/ovito" });
+    job.cancel = () => { cancelled = true; api.post(`/api/ovito/frames/cancel/${token}`).catch(() => {}); };
+    clear(status).append(tasks.progressBox(job, { onCancel: job.cancel }));
+    try {
+      const { r } = await job.promise;
       clear(status);
       if (csv && r.saved_to) {
         status.append(el("div", { class: "banner" }, `${r.rows.length} frames exported to `, el("code", {}, r.saved_to), ` (${bytes(r.bytes)}, ${r.rows[0].columns.length} columns each, OVITO ${r.meta.seconds} s).`));
