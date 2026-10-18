@@ -1,5 +1,13 @@
 # Changes
 
+## NanoCut Studio: help guide, CI/CD installer, updates (2026-10-18)
+
+- Sidebar "Help — what each tab does" (`js/guide.js`, mounted in `js/app.js`, styles in `css/base.css`); brand name
+  NanoCut Studio (`index.html`).
+- `.github/workflows/windows-installer.yml`: build, test and release the Windows installer on every push to main.
+- Launcher update check and installer `/launch`; installer file `NanoCut-Studio-Setup.exe`; versions
+  `<app>.<UTC yyyymmddHHMM>` in a generated `BuildInfo.cs` (`desktop/`).
+
 ## Research analysis, Graph Studio, Windows installer (2026-10-18, PLAN_PHASE3.md)
 
 - Created `nanocut/stress.py` (all stress measures), `nanocut/research.py` (per-region quantities, RDF/bond angles from

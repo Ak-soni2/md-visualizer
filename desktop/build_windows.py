@@ -1,6 +1,10 @@
 """Build the Windows installer of NanoCut (PLAN_PHASE3.md §5).
 
-    .venv\\Scripts\\python desktop\\build_windows.py            -> dist\\NanoCut-Setup-<version>.exe, dist\\NanoCut-portable-<version>.zip
+    .venv\\Scripts\\python desktop\\build_windows.py
+        -> dist\\NanoCut-Studio-Setup.exe (the file to share), dist\\NanoCut-Studio-Setup-<version>.exe,
+           dist\\NanoCut-Studio-portable.zip, and a copy NanoCut-Studio-Setup.exe in the project folder
+The GitHub Actions workflow .github/workflows/windows-installer.yml runs the same script on every push to main and
+publishes the result as the latest release; installed copies offer the update when they start (desktop/launcher).
 
 Offline: everything comes from this computer.
   python/   a copy of the CPython the project .venv was made from (python.exe, DLLs, Lib, tcl for the file dialogs) with the
@@ -39,9 +43,18 @@ def log(*a):
     print(time.strftime("%H:%M:%S"), *a, flush=True)
 
 
+APP = "NanoCut-Studio"
+REPO = os.environ.get("GITHUB_REPOSITORY", "Ak-soni2/md-visualizer")
+_VERSION = None
+
+
 def version():
-    v = re.search(r'__version__ = "([^"]+)"', (ROOT / "webapp" / "backend" / "app" / "__init__.py").read_text()).group(1)
-    return f"{v}.{time.strftime('%Y%m%d')}"
+    """<app version>.<UTC yyyymmddHHMM>: increases with every build, so the launcher can tell which release is newer."""
+    global _VERSION
+    if _VERSION is None:
+        v = re.search(r'__version__ = "([^"]+)"', (ROOT / "webapp" / "backend" / "app" / "__init__.py").read_text()).group(1)
+        _VERSION = os.environ.get("NANOCUT_VERSION") or f"{v}.{time.strftime('%Y%m%d%H%M', time.gmtime())}"
+    return _VERSION
 
 
 def closure(names):
@@ -123,7 +136,8 @@ def stage():
     for f in APP_FILES:
         if (ROOT / f).exists():
             shutil.copy2(ROOT / f, app / f)
-    (app / "desktop.txt").write_text(f"NanoCut desktop build {version()} (built {time.strftime('%Y-%m-%d %H:%M')})\n")
+    (app / "desktop.txt").write_text(f"NanoCut Studio desktop build {version()} (built {time.strftime('%Y-%m-%d %H:%M')})\n")
+    (BUILD / "NanoCut" / "version.txt").write_text(version() + "\n")
     return BUILD / "NanoCut"
 
 
@@ -138,11 +152,28 @@ def make_icon(path):
     big.save(path, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
 
 
+def build_info():
+    """Constants compiled into the launcher and the installer."""
+    f = BUILD / "BuildInfo.cs"
+    v = version()
+    nums = (v.split(".") + ["0", "0", "0"])[:3]
+    f.write_text("using System.Reflection;\n"
+                 f'[assembly: AssemblyVersion("{".".join(nums)}.0")]\n'
+                 f'[assembly: AssemblyInformationalVersion("{v}")]\n'
+                 '[assembly: AssemblyProduct("NanoCut Studio")]\n'
+                 "static class BuildInfo\n{\n"
+                 f'    public const string Version = "{v}";\n'
+                 f'    public const string Repo = "{REPO}";\n'
+                 f'    public const string Asset = "{APP}-Setup.exe";\n'
+                 "}\n", encoding="utf-8")
+    return f
+
+
 def csc(out, src, icon, target="winexe"):
     if not CSC.exists():
         sys.exit(f"csc.exe not found at {CSC} (.NET Framework 4 is part of Windows 10/11)")
     cmd = [str(CSC), "/nologo", "/optimize+", f"/target:{target}", "/platform:anycpu", f"/out:{out}", f"/win32icon:{icon}",
-           "/r:System.Windows.Forms.dll", "/r:System.Drawing.dll", "/r:System.IO.Compression.dll", "/r:System.IO.Compression.FileSystem.dll", str(src)]
+           "/r:System.Windows.Forms.dll", "/r:System.Drawing.dll", "/r:System.IO.Compression.dll", "/r:System.IO.Compression.FileSystem.dll", str(src), str(BUILD / "BuildInfo.cs")]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode:
         sys.exit(f"csc failed for {src.name}:\n{r.stdout}\n{r.stderr}")
@@ -157,7 +188,8 @@ def main():
     root = stage()
     icon = BUILD / "nanocut.ico"
     make_icon(icon)
-    log("compile launcher and installer")
+    log("compile launcher and installer, version", v)
+    build_info()
     csc(root / "NanoCut.exe", ROOT / "desktop" / "launcher" / "NanoCut.cs", icon)
     stub = BUILD / "Setup-stub.exe"
     csc(stub, ROOT / "desktop" / "installer" / "Setup.cs", icon)
@@ -171,7 +203,9 @@ def main():
                 z.write(p, p.relative_to(root).as_posix())
                 n += 1
     DIST.mkdir(exist_ok=True)
-    setup = DIST / f"NanoCut-Setup-{v}.exe"
+    for old in DIST.glob(f"{APP}-*"):
+        old.unlink()
+    setup = DIST / f"{APP}-Setup-{v}.exe"
     with open(setup, "wb") as out:
         out.write(stub.read_bytes())
         off = out.tell()
@@ -180,8 +214,13 @@ def main():
         ln = out.tell() - off
         out.write(b"NCPAYLD1" + struct.pack("<qq", off, ln))
     log(f"installer {setup} ({setup.stat().st_size / 1e6:.0f} MB, {n} files)")
+    share = DIST / f"{APP}-Setup.exe"                             # the stable name: release asset, file to share
+    shutil.copy2(setup, share)
+    if not os.environ.get("CI"):
+        shutil.copy2(setup, ROOT / share.name)                    # also in the project folder (ignored by git)
+    (DIST / "version.txt").write_text(v + "\n")
     if not a.no_portable:
-        port = DIST / f"NanoCut-portable-{v}.zip"
+        port = DIST / f"{APP}-portable.zip"
         with zipfile.ZipFile(port, "w", zipfile.ZIP_STORED) as z, zipfile.ZipFile(payload) as src:
             for i in src.infolist():                             # same files under a NanoCut/ folder
                 z.writestr(zipfile.ZipInfo(f"NanoCut/{i.filename}", i.date_time), src.read(i), zipfile.ZIP_DEFLATED, 6)

@@ -3,7 +3,7 @@
 // ("NCPAYLD1", payload offset, payload length; little-endian int64). Per-user install: no administrator rights.
 //
 //   NanoCut-Setup.exe                              install with a small dialog
-//   NanoCut-Setup.exe /S [/D=<folder>] [/noshortcuts] [/noregistry] [/nolaunch]   silent install
+//   NanoCut-Studio-Setup.exe /S [/D=<folder>] [/noshortcuts] [/noregistry] [/launch]   silent install (/launch: start it afterwards; used by updates)
 //   Uninstall.exe [/S]                            (this program without payload, copied into the install folder)
 using System;
 using System.Diagnostics;
@@ -16,15 +16,13 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-[assembly: AssemblyTitle("NanoCut Setup")]
-[assembly: AssemblyProduct("NanoCut MD workstation")]
-[assembly: AssemblyVersion("0.3.0.0")]
+[assembly: AssemblyTitle("NanoCut Studio Setup")]
 
 static class Setup
 {
-    const string Name = "NanoCut", Publisher = "NanoCut (IIT Jodhpur BTP)", Magic = "NCPAYLD1";
+    const string Name = "NanoCut", Title = "NanoCut Studio", Publisher = "NanoCut (IIT Jodhpur BTP)", Magic = "NCPAYLD1";
     const string UninstKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\NanoCut";
-    static string Version = "0.3.0";
+    static string Version = BuildInfo.Version;
     static string Self = Assembly.GetExecutingAssembly().Location;
 
     static string DefaultDir()
@@ -119,17 +117,18 @@ static class Setup
         if (shortcuts)
         {
             progress(100, "Creating shortcuts…");
-            string menu = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), Name);
+            RemoveShortcuts();                                              // also those of older versions (named NanoCut)
+            string menu = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), Title);
             Directory.CreateDirectory(menu);
-            Shortcut(Path.Combine(menu, "NanoCut.lnk"), exe, dir, "NanoCut MD workstation");
-            Shortcut(Path.Combine(menu, "Uninstall NanoCut.lnk"), Path.Combine(dir, "Uninstall.exe"), dir, "Remove NanoCut");
-            Shortcut(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "NanoCut.lnk"), exe, dir, "NanoCut MD workstation");
+            Shortcut(Path.Combine(menu, Title + ".lnk"), exe, dir, "NanoCut Studio MD workstation");
+            Shortcut(Path.Combine(menu, "Uninstall " + Title + ".lnk"), Path.Combine(dir, "Uninstall.exe"), dir, "Remove NanoCut Studio");
+            Shortcut(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), Title + ".lnk"), exe, dir, "NanoCut Studio MD workstation");
         }
         if (registry)
         {
             using (var k = Registry.CurrentUser.CreateSubKey(UninstKey))
             {
-                k.SetValue("DisplayName", "NanoCut MD workstation");
+                k.SetValue("DisplayName", Title);
                 k.SetValue("DisplayVersion", Version);
                 k.SetValue("Publisher", Publisher);
                 k.SetValue("InstallLocation", dir);
@@ -166,19 +165,24 @@ static class Setup
         st.InvokeMember("Save", BindingFlags.InvokeMethod, null, sc, null);
     }
 
+    static void RemoveShortcuts()
+    {
+        string programs = Environment.GetFolderPath(Environment.SpecialFolder.Programs), desk = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        foreach (var m in new[] { Name, Title }) try { if (Directory.Exists(Path.Combine(programs, m))) Directory.Delete(Path.Combine(programs, m), true); } catch { }
+        foreach (var l in new[] { Name, Title }) try { File.Delete(Path.Combine(desk, l + ".lnk")); } catch { }
+    }
+
     static int Uninstall(bool silent)
     {
         string dir = Path.GetDirectoryName(Self);
-        if (!silent && MessageBox.Show("Remove NanoCut from " + dir + "?\n\nYour dump files and results elsewhere are not touched.", "Uninstall NanoCut",
+        if (!silent && MessageBox.Show("Remove NanoCut Studio from " + dir + "?\n\nYour dump files and results elsewhere are not touched.", "Uninstall NanoCut Studio",
                 MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return 1;
         StopRunning(Path.Combine(dir, "python"));
-        string menu = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), Name);
-        try { if (Directory.Exists(menu)) Directory.Delete(menu, true); } catch { }
-        try { File.Delete(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "NanoCut.lnk")); } catch { }
+        RemoveShortcuts();
         try { Registry.CurrentUser.DeleteSubKeyTree(UninstKey, false); } catch { }
         // this program runs from the folder: a short-lived cmd removes the folder after it has exited
         Process.Start(new ProcessStartInfo("cmd.exe", "/c ping -n 3 127.0.0.1 >nul & rmdir /s /q \"" + dir + "\"") { CreateNoWindow = true, UseShellExecute = false });
-        if (!silent) MessageBox.Show("NanoCut was removed.", "Uninstall NanoCut", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        if (!silent) MessageBox.Show("NanoCut Studio was removed.", "Uninstall NanoCut Studio", MessageBoxButtons.OK, MessageBoxIcon.Information);
         return 0;
     }
 
@@ -193,15 +197,22 @@ static class Setup
         bool shortcuts = !Has(args, "/noshortcuts"), registry = !Has(args, "/noregistry");
         if (silent)
         {
-            try { Install(f, off, len, dir, shortcuts, registry, (p, m) => { }); Console.WriteLine("installed to " + dir); return 0; }
+            try
+            {
+                if (Has(args, "/launch")) Thread.Sleep(1500);               // an updating launcher is still exiting
+                Install(f, off, len, dir, shortcuts, registry, (p, m) => { });
+                Console.WriteLine("installed to " + dir);
+                if (Has(args, "/launch")) Process.Start(Path.Combine(dir, "NanoCut.exe"));
+                return 0;
+            }
             catch (Exception e) { Console.Error.WriteLine(e); try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "nanocut-setup-error.txt"), e.ToString()); } catch { } return 1; }
             finally { f.Dispose(); }
         }
         Application.EnableVisualStyles();
-        var form = new Form { Text = "Install NanoCut " + Version, Width = 560, Height = 300, StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false };
+        var form = new Form { Text = "Install NanoCut Studio " + Version, Width = 560, Height = 300, StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false };
         try { form.Icon = Icon.ExtractAssociatedIcon(Self); } catch { }
         var font = new Font("Segoe UI", 9.5f);
-        var head = new Label { Text = "NanoCut MD workstation — deck generator, OVITO analysis, research graphs.\nEverything it needs (Python, OVITO, libraries) is included; no internet and no administrator rights are needed.", Left = 16, Top = 14, Width = 510, Height = 48, Font = font };
+        var head = new Label { Text = "NanoCut Studio — deck generator, OVITO analysis, research graphs.\nEverything it needs (Python, OVITO, libraries) is included; no internet and no administrator rights are needed.", Left = 16, Top = 14, Width = 510, Height = 48, Font = font };
         var dl = new Label { Text = "Install folder", Left = 16, Top = 72, Width = 100, Font = font };
         var box = new TextBox { Text = dir, Left = 16, Top = 94, Width = 420, Font = font };
         var browse = new Button { Text = "Browse…", Left = 444, Top = 92, Width = 82, Font = font };

@@ -3,6 +3,7 @@ import * as api from "./api.js";
 import { CONFIG } from "./config.js";
 import { bus, state } from "./state.js";
 import { $, el, clear, svg, icon, initTooltips, closeSource, toast, kindBadge, errorState, loading } from "./ui.js";
+import { mountGuideButton } from "./guide.js";
 
 export const VIEWS = [
   { id: "workspace", label: "Workspace", load: () => import("./views/workspace.js") },
@@ -127,6 +128,7 @@ function shortcuts() {
 async function main() {
   initTooltips();
   buildNav();
+  mountGuideButton(document.querySelector(".sidebar-foot"));
   $("#btn-refresh").append(svg("refresh"));
   $("#btn-help").append(svg("help"));
   $("#btn-docs").href = (CONFIG.apiBase || "") + "/docs";

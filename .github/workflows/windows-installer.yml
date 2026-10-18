@@ -1,0 +1,74 @@
+# Builds the NanoCut Studio Windows installer on every push to main (a merged pull request is a push to main) and
+# publishes it as the latest GitHub release. Installed copies check for it when they start and offer the update
+# (desktop/launcher/NanoCut.cs). Share this link; it always gives the newest installer:
+#   https://github.com/Ak-soni2/md-visualizer/releases/latest/download/NanoCut-Studio-Setup.exe
+name: Windows installer
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "Manual.pdf"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-installer
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install packages into .venv
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .venv\Scripts\python -m pip install --upgrade pip
+          .venv\Scripts\python -m pip install numpy pandas -r webapp/backend/requirements.txt
+
+      - name: Known-answer tests
+        shell: pwsh
+        run: .venv\Scripts\python -m tests.test_research
+
+      - name: Build installer
+        shell: pwsh
+        run: .venv\Scripts\python desktop\build_windows.py
+
+      - name: Test installer (silent install, backend + OVITO check, uninstall)
+        shell: pwsh
+        run: |
+          $d = "$env:RUNNER_TEMP\nanocut-test"
+          $p = Start-Process dist\NanoCut-Studio-Setup.exe -ArgumentList "/S", "/D=$d", "/noshortcuts", "/noregistry" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "install failed ($($p.ExitCode))" }
+          $c = Start-Process "$d\NanoCut.exe" -ArgumentList "--check" -Wait -PassThru
+          Get-Content "$env:LOCALAPPDATA\NanoCut\logs\check.log"
+          if ($c.ExitCode -ne 0) { Get-Content "$env:LOCALAPPDATA\NanoCut\logs\server.log" -Tail 60; throw "launcher check failed" }
+          Start-Process "$d\Uninstall.exe" -ArgumentList "/S" -Wait
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = (Get-Content dist\version.txt).Trim()
+          $msg = (git log -1 --pretty=%s)
+          $notes = @"
+          Automatic build of $($env:GITHUB_SHA.Substring(0,7)) — $msg
+
+          **Download:** NanoCut-Studio-Setup.exe → run it → Install → Start. Python, OVITO and all libraries are included (Windows 10/11 x64, no admin rights).
+          Already installed? NanoCut Studio offers this update when it starts.
+          Unsigned installer: if SmartScreen appears, click More info → Run anyway.
+          "@
+          gh release create "v$v" dist\NanoCut-Studio-Setup.exe dist\NanoCut-Studio-portable.zip `
+            --target $env:GITHUB_SHA --title "NanoCut Studio $v" --notes "$notes" --latest

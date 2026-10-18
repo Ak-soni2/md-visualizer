@@ -9,6 +9,11 @@
 //   NanoCut.exe            normal start
 //   NanoCut.exe --check    start the backend, check /api/health and /api/ovito/status, stop; exit code 0 = OK
 //   NanoCut.exe --browser  use the default browser instead of an app window
+//   NanoCut.exe --no-update   skip the update check (also: environment variable NANOCUT_NO_UPDATE=1)
+//
+// Updates: after start the launcher asks GitHub for the latest release of BuildInfo.Repo (built by the CI workflow on
+// every push to main). When it is newer than BuildInfo.Version it offers to install it: the installer is downloaded,
+// run silently into this folder with /launch, and the app restarts. "No" skips that version.
 using System;
 using System.Diagnostics;
 using System.Drawing;
@@ -16,13 +21,12 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 
-[assembly: AssemblyTitle("NanoCut")]
-[assembly: AssemblyProduct("NanoCut MD workstation")]
+[assembly: AssemblyTitle("NanoCut Studio")]
 [assembly: AssemblyDescription("Nanometric cutting MD: deck generator, OVITO analysis, Graph Studio")]
-[assembly: AssemblyVersion("0.3.0.0")]
 
 static class NanoCut
 {
@@ -159,9 +163,9 @@ static class NanoCut
             Application.EnableVisualStyles();
             int port = FreePort(8600);
             File.WriteAllText(portFile, port.ToString());
-            var splash = new Form { Text = "NanoCut", Width = 420, Height = 150, StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false };
+            var splash = new Form { Text = "NanoCut Studio " + BuildInfo.Version, Width = 420, Height = 150, StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false };
             try { splash.Icon = Icon.ExtractAssociatedIcon(Assembly.GetExecutingAssembly().Location); } catch { }
-            var lab = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Segoe UI", 10f), Text = "Starting NanoCut…" };
+            var lab = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Segoe UI", 10f), Text = "Starting NanoCut Studio…" };
             splash.Controls.Add(lab);
             splash.Show(); Application.DoEvents();
             if (!StartServer(port)) return 1;
@@ -182,6 +186,7 @@ static class NanoCut
                     string profile = Path.Combine(DataDir, "window");
                     var b = Process.Start(new ProcessStartInfo(browser, string.Format("--app=\"{0}\" --user-data-dir=\"{1}\" --no-first-run --no-default-browser-check --window-size=1440,900", url, profile)) { UseShellExecute = false });
                     Log("window " + browser + " pid " + b.Id);
+                    StartUpdateCheck(args, () => { try { b.Kill(); } catch { } });
                     b.WaitForExit();
                     // a browser that hands the window to an existing process exits at once: keep serving while any
                     // process of this private profile is alive
@@ -190,7 +195,8 @@ static class NanoCut
                 else
                 {
                     Process.Start(url);
-                    var f = new Form { Text = "NanoCut is running", Width = 460, Height = 170, StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false };
+                    StartUpdateCheck(args, null);
+                    var f = new Form { Text = "NanoCut Studio is running", Width = 460, Height = 170, StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false };
                     var t = new Label { Text = "NanoCut runs at " + url + "\nClose this window to stop it.", Dock = DockStyle.Top, Height = 60, TextAlign = ContentAlignment.MiddleCenter };
                     var open = new Button { Text = "Open in browser", Width = 140, Left = 80, Top = 70 };
                     open.Click += (s, e) => Process.Start(url);
@@ -203,6 +209,58 @@ static class NanoCut
             finally { StopServer(); try { File.Delete(portFile); } catch { } Log("stopped"); }
         }
         return 0;
+    }
+
+    // ------------------------------------------------------------------------------------------ updates
+    static long[] Ver(string v)
+    {
+        var parts = v.TrimStart('v', 'V').Split('.');
+        var o = new long[4];
+        for (int i = 0; i < Math.Min(4, parts.Length); i++) long.TryParse(parts[i], out o[i]);
+        return o;
+    }
+    static bool Newer(string a, string b)
+    {
+        long[] x = Ver(a), y = Ver(b);
+        for (int i = 0; i < 4; i++) if (x[i] != y[i]) return x[i] > y[i];
+        return false;
+    }
+
+    static void StartUpdateCheck(string[] args, Action closeWindow)
+    {
+        if (Array.IndexOf(args, "--no-update") >= 0 || Environment.GetEnvironmentVariable("NANOCUT_NO_UPDATE") == "1") return;
+        var t = new Thread(() =>
+        {
+            try
+            {
+                Thread.Sleep(4000);
+                ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+                var req = (HttpWebRequest)WebRequest.Create("https://api.github.com/repos/" + BuildInfo.Repo + "/releases/latest");
+                req.UserAgent = "NanoCut-Studio-launcher"; req.Accept = "application/vnd.github+json"; req.Timeout = 15000;
+                string json;
+                using (var r = req.GetResponse()) using (var sr = new StreamReader(r.GetResponseStream())) json = sr.ReadToEnd();
+                string tag = Regex.Match(json, "\"tag_name\"\\s*:\\s*\"([^\"]+)\"").Groups[1].Value;
+                string asset = Regex.Match(json, "\"browser_download_url\"\\s*:\\s*\"([^\"]*/" + Regex.Escape(BuildInfo.Asset) + ")\"").Groups[1].Value;
+                Log("update check: installed " + BuildInfo.Version + ", latest " + tag);
+                if (tag == "" || asset == "" || !Newer(tag, BuildInfo.Version)) return;
+                string skip = Path.Combine(DataDir, "skip_version.txt");
+                if (File.Exists(skip) && File.ReadAllText(skip).Trim() == tag) return;
+                var ans = MessageBox.Show("A new version of NanoCut Studio is available.\n\nInstalled: " + BuildInfo.Version + "\nAvailable: " + tag.TrimStart('v') +
+                    "\n\nDownload and install it now? NanoCut Studio closes and restarts by itself (about a minute).\n\nNo = skip this version.",
+                    "NanoCut Studio update", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Information, MessageBoxDefaultButton.Button1, MessageBoxOptions.DefaultDesktopOnly);
+                if (ans == DialogResult.No) { File.WriteAllText(skip, tag); return; }
+                if (ans != DialogResult.Yes) return;
+                string setup = Path.Combine(Path.GetTempPath(), "NanoCut-Studio-update-" + tag + ".exe");
+                using (var wc = new WebClient()) { wc.Headers["User-Agent"] = "NanoCut-Studio-launcher"; wc.DownloadFile(asset, setup); }
+                Log("update downloaded " + setup);
+                if (closeWindow != null) closeWindow();
+                StopServer();
+                Process.Start(new ProcessStartInfo(setup, "/S /D=\"" + AppDir + "\" /launch") { UseShellExecute = false });
+                Environment.Exit(0);
+            }
+            catch (Exception e) { Log("update check failed: " + e.Message); }
+        }) { IsBackground = true };
+        t.Start();
     }
 
     static bool ProfileAlive(string profile)

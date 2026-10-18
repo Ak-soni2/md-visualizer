@@ -5,3 +5,4 @@ __pycache__/
 .vercel/
 build/
 dist/
+/NanoCut-Studio-Setup*.exe

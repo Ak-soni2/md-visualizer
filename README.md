@@ -5,10 +5,12 @@ geometry, depth, speed, ...) and get the two LAMMPS input decks **A** (build + e
 (restart → cut) that follow the structure of the reference decks in `C:\BTP\Cutting`, plus a geometry preview with exact
 atom counts, an in-LAMMPS validation, an optional reduced-scale real MD preview, and an OVITO-style results visualizer.
 
-## Windows app (no setup)
+## Windows app: NanoCut Studio (no setup)
 
-Run `NanoCut-Setup-<version>.exe` (built with `.venv\Scripts\python desktop\build_windows.py`, see `desktop/README.md`):
-Python, OVITO and every library are inside; no internet or admin rights needed. Start NanoCut from the Start menu.
+Share and run **`NanoCut-Studio-Setup.exe`** — newest build always at
+https://github.com/Ak-soni2/md-visualizer/releases/latest/download/NanoCut-Studio-Setup.exe (built by GitHub Actions on
+every push to `main`; installed copies offer updates). Python, OVITO and every library are inside; no internet or admin
+rights needed. Local build: `.venv\Scripts\python desktop\build_windows.py` (see `desktop/README.md`).
 
 ## What it does (web workstation)
 

@@ -312,6 +312,17 @@ Field notes: `σ1 max` per atom is dominated by single surface atoms (166 GPa on
 virial average in papers; the per-atom mean von Mises is inflated by thermal noise (33.7 vs 10.0 GPa virial in the contact
 zone of frame 2).
 
+## 6c. Follow-up (2026-10-18): name, help, CI/CD, updates
+
+- Name: **NanoCut Studio** (keeps the project's name, says it is the full workstation); installer file
+  `NanoCut-Studio-Setup.exe` (copy in the project folder after a local build, ignored by git). [x]
+- Help: "Help — what each tab does" button at the bottom of the sidebar (`webapp/frontend/js/guide.js`): purpose of every
+  tab and the usual workflow. [x]
+- CI/CD: `.github/workflows/windows-installer.yml` — on every push to main: tests, build, install/check/uninstall test,
+  release `v<version>` marked latest with `NanoCut-Studio-Setup.exe`. [x]
+- Updates: the launcher checks the latest release at start and installs a newer one on request (silent install into the
+  same folder, restart). [x]
+
 ## 7. Backlog (the rest of the project, after this phase)
 
 1. **DoE sweeps** (`PLAN.md` phase 7): parameter lists → folder matrix, `run_all.sh`, `matrix.csv`; after the runs, the

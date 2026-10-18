@@ -1,51 +1,73 @@
-# NanoCut for Windows (installer and launcher)
+# NanoCut Studio for Windows (installer, launcher, automatic builds)
 
-`NanoCut-Setup-<version>.exe` installs the whole web workstation (deck generator, Studio, OVITO page, Research analysis,
-Graph Studio) on any Windows 10/11 x64 PC: Python 3.12, OVITO 3.16, NumPy, pandas, matplotlib, FastAPI … are inside.
-No internet, no Python and no administrator rights are needed on the target PC.
+**The file to share: `NanoCut-Studio-Setup.exe`.** It installs the whole workstation (deck generator, Studio, OVITO page,
+Research analysis, Graph Studio) on any Windows 10/11 x64 PC: Python 3.12, OVITO 3.16, NumPy, pandas, matplotlib,
+FastAPI … are inside. No internet, no Python and no administrator rights are needed on the target PC.
 
-## Build (on the development PC)
+Newest installer, always (share this link):
+https://github.com/Ak-soni2/md-visualizer/releases/latest/download/NanoCut-Studio-Setup.exe
+
+## Automatic builds and updates (CI/CD)
+
+`.github/workflows/windows-installer.yml` runs on every push to `main` (a merged pull request is a push to `main`;
+pushes that change only `*.md` files are skipped) and by hand (*Actions → Windows installer → Run workflow*):
+
+1. installs the packages on a Windows runner, runs `python -m tests.test_research`;
+2. builds the installer with `desktop/build_windows.py`;
+3. tests it: silent install, `NanoCut.exe --check` (backend, OVITO worker, app), silent uninstall;
+4. publishes release `v<version>` (version = app version + UTC build time, e.g. `0.3.0.202610181712`) with
+   `NanoCut-Studio-Setup.exe` and `NanoCut-Studio-portable.zip`, marked *latest*.
+
+Installed copies ask GitHub for the latest release a few seconds after start. When it is newer, a dialog offers it:
+*Yes* downloads the installer, closes NanoCut Studio, installs into the same folder silently and starts it again;
+*No* skips that version; *Cancel* asks next time. `NanoCut.exe --no-update` (or `NANOCUT_NO_UPDATE=1`) turns the check off.
+Copies installed from release v0.3.0 (before the updater existed) need the new installer once by hand.
+
+## Build locally
 
 ```bat
 .venv\Scripts\python desktop\build_windows.py
 ```
 
-Output in `dist\` (ignored by git; the installer is ~0.4 GB, above GitHub's 100 MB file limit — share it by USB/drive,
-or attach it to a GitHub Release, which allows 2 GB per file):
-
-| File | Use |
+| Output | Use |
 |---|---|
-| `NanoCut-Setup-<version>.exe` | double-click → choose folder → Install → Start. Start-menu + desktop shortcut, entry in *Apps & features* |
-| `NanoCut-portable-<version>.zip` | unzip anywhere and double-click `NanoCut\NanoCut.exe` (no installation) |
+| `NanoCut-Studio-Setup.exe` (project folder and `dist\`) | double-click → choose folder → Install → Start. Start-menu + desktop shortcut "NanoCut Studio", entry in *Apps & features* |
+| `dist\NanoCut-Studio-Setup-<version>.exe` | the same, with the version in the name |
+| `dist\NanoCut-Studio-portable.zip` | unzip anywhere and double-click `NanoCut\NanoCut.exe` (no installation) |
 
-How it is built (`build_windows.py`): the CPython of the project `.venv` (with Tcl/Tk for the file dialogs) + the
-packages the workstation needs (dependency closure of `webapp/backend/requirements.txt`, copied from `.venv`; Streamlit
-and pip left out) + the Visual C++ runtime DLLs + the application folders. The launcher (`launcher/NanoCut.cs`) and the
-installer (`installer/Setup.cs`) are compiled with the .NET Framework `csc.exe` that is part of Windows; the installer
-carries the application as a ZIP appended to the executable.
+The installer is ~0.26 GB, above GitHub's 100 MB file limit, so it is not committed (ignored by git); releases allow 2 GB.
+
+How it is built: the CPython the `.venv` was made from (with Tcl/Tk for the file dialogs) + the packages the workstation
+needs (dependency closure of `webapp/backend/requirements.txt`, copied from `.venv`; Streamlit and pip left out) + the
+Visual C++ runtime DLLs + the application folders. The launcher (`launcher/NanoCut.cs`) and installer
+(`installer/Setup.cs`) are compiled with the .NET Framework `csc.exe` that is part of Windows, together with a generated
+`BuildInfo.cs` (version, repository, asset name); the installer carries the application as a ZIP appended to itself.
 
 ## Installed layout
 
 ```
 %LOCALAPPDATA%\Programs\NanoCut\
-  NanoCut.exe       launcher: starts the backend hidden, opens the app window (Edge/Chrome app mode), stops it on close
+  NanoCut.exe       launcher: starts the backend hidden, opens the app window (Edge/Chrome app mode), stops it on close,
+                    checks for updates
   Uninstall.exe     removes the folder, shortcuts and the Apps & features entry
+  version.txt       installed version
   python\           the bundled Python with all packages
   app\              nanocut/, webapp/, potentials/, reference/, examples/, tools/, docs
-%LOCALAPPDATA%\NanoCut\logs\   launcher.log, server.log, check.log
+%LOCALAPPDATA%\NanoCut\logs\   launcher.log (also update checks), server.log, check.log
 ```
 
 ## Command line
 
 ```bat
-NanoCut-Setup-<version>.exe /S /D=C:\Tools\NanoCut          silent install (also /noshortcuts /noregistry)
-NanoCut.exe --check                                          start the backend, check API + OVITO, stop (exit code 0 = OK)
-NanoCut.exe --browser                                        open in the default browser instead of an app window
-Uninstall.exe /S                                             silent uninstall
+NanoCut-Studio-Setup.exe /S /D=C:\Tools\NanoCut          silent install (also /noshortcuts /noregistry; /launch starts it after)
+NanoCut.exe --check                                      start the backend, check API + OVITO, stop (exit code 0 = OK)
+NanoCut.exe --browser                                    open in the default browser instead of an app window
+NanoCut.exe --no-update                                  no update check
+Uninstall.exe /S                                         silent uninstall
 ```
 
 ## Notes
 
-- The installer is not code-signed: Windows SmartScreen shows "Windows protected your PC" on first start → *More info* →
-  *Run anyway*. Signing needs a code-signing certificate (backlog item in `PLAN_PHASE3.md` §7).
-- The app runs only on 127.0.0.1 (nothing is reachable from the network). Dump files are read where they are.
+- Not code-signed: SmartScreen may show "Windows protected your PC" → *More info* → *Run anyway* (signing needs a
+  certificate; backlog in `PLAN_PHASE3.md` §7).
+- The app listens only on 127.0.0.1. Dump files are read where they are.
